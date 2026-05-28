@@ -1,0 +1,29 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import authRouter from './routes/auth';
+import { authMiddleware } from './middleware/auth';
+import userRouter from './routes/users';
+import captureRouter from './routes/captures';
+import inviteRouter from './routes/invite';
+import listRouter from './routes/list';
+import demoRouter from './routes/demo';
+
+const app = express();
+
+app.use(cors({ origin: process.env.FRONTEND_URL }));
+app.use(express.json());
+
+const demoLimiter = rateLimit({ windowMs: 60_000, max: 5 });
+app.use('/demo', demoLimiter, demoRouter);
+
+app.use('/auth', authRouter);
+app.use(authMiddleware);
+app.use('/users', userRouter);
+app.use('/captures', captureRouter);
+app.use('/invite', inviteRouter);
+app.use('/list', listRouter);
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Drop API running on port ${PORT}`));

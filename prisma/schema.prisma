@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Household {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  users     User[]
+  invites   HouseholdInvite[]
+  items     ListItem[]
+}
+
+model User {
+  id             String    @id
+  householdId    String?
+  name           String?
+  email          String?
+  onboardingDone Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  household      Household?        @relation(fields: [householdId], references: [id])
+  invitesCreated HouseholdInvite[]
+  ownedItems     ListItem[]        @relation("owner")
+  routedItems    ListItem[]        @relation("routedFrom")
+}
+
+model HouseholdInvite {
+  id          String    @id @default(uuid())
+  householdId String
+  createdById String
+  token       String    @unique @default(uuid())
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  household   Household @relation(fields: [householdId], references: [id])
+  createdBy   User      @relation(fields: [createdById], references: [id])
+}
+
+model ListItem {
+  id            String    @id @default(uuid())
+  householdId   String
+  ownerId       String
+  fromUserId    String?
+  type          String    // TASK | NOTE | SHARED_TASK | SHARED_NOTE
+  displayType   String    // TASK | NOTE | SHARED TASK | SHARED NOTE
+  text          String
+  rawTranscript String?
+  done          Boolean   @default(false)
+  doneAt        DateTime?
+  dueDate       DateTime?
+  reminderAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  household     Household @relation(fields: [householdId], references: [id])
+  owner         User      @relation("owner", fields: [ownerId], references: [id])
+  fromUser      User?     @relation("routedFrom", fields: [fromUserId], references: [id])
+}
