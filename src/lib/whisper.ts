@@ -1,4 +1,9 @@
 import OpenAI, { toFile } from 'openai';
+import { File as NodeFile } from 'node:buffer';
+
+if (!(globalThis as { File?: unknown }).File) {
+    (globalThis as { File?: unknown }).File = NodeFile;
+}
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
