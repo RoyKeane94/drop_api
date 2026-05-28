@@ -39,10 +39,21 @@ router.post('/audio', upload.single('audio'), async (req, res) => {
             text: result.text,
             dueDate: result.dueDate ?? null,
         });
-    } catch (error) {
-        console.error('Demo audio capture failed:', error);
-        res.status(500).json({ error: 'Audio processing failed' });
+    } catch (error: unknown) {
+        const detail = getErrorDetail(error);
+        console.error('Demo audio capture failed:', detail, error);
+        res.status(500).json({ error: `Audio processing failed: ${detail}` });
     }
 });
+
+function getErrorDetail(error: unknown): string {
+    if (error && typeof error === 'object') {
+        const maybeMessage = (error as { message?: unknown }).message;
+        if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
+            return maybeMessage;
+        }
+    }
+    return 'unknown error';
+}
 
 export default router;
