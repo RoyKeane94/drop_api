@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { verifyAppleToken } from '../lib/appleAuth';
 import { prisma } from '../lib/prisma';
 import { signSessionToken } from '../lib/session';
+import { seedHouseholdStarterTags } from '../lib/tags';
 
 const authRouter = Router();
 
 authRouter.post('/apple', async (req, res) => {
     try {
-        const { identityToken } = req.body ?? {};
+        const { identityToken, name } = req.body ?? {};
 
         if (!identityToken || typeof identityToken !== 'string') {
             return res.status(400).json({ error: 'identityToken is required' });
@@ -19,10 +20,12 @@ authRouter.post('/apple', async (req, res) => {
             where: { id: sub },
             update: {
                 ...(email ? { email } : {}),
+                ...(typeof name === 'string' && name.trim().length > 0 ? { name: name.trim() } : {}),
             },
             create: {
                 id: sub,
                 email,
+                ...(typeof name === 'string' && name.trim().length > 0 ? { name: name.trim() } : {}),
             },
         });
 
@@ -30,6 +33,7 @@ authRouter.post('/apple', async (req, res) => {
         // Invites then allow exactly one partner to join that household.
         if (!user.householdId) {
             const household = await prisma.household.create({ data: {} });
+            await seedHouseholdStarterTags(household.id);
             user = await prisma.user.update({
                 where: { id: user.id },
                 data: { householdId: household.id },

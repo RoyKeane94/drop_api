@@ -20,6 +20,10 @@ router.post('/audio', upload.single('audio'), async (req: any, res) => {
         res.json(item);
     } catch (err) {
         console.error('Audio capture error:', err);
+        const message = err instanceof Error ? err.message : 'Processing failed';
+        if (message.includes("Couldn't quite catch that")) {
+            return res.status(422).json({ error: message });
+        }
         res.status(500).json({ error: 'Processing failed' });
     }
 });
@@ -34,6 +38,10 @@ router.post('/text', async (req: any, res) => {
         res.json(item);
     } catch (err) {
         console.error('Text capture error:', err);
+        const message = err instanceof Error ? err.message : 'Processing failed';
+        if (message.includes("Couldn't quite catch that")) {
+            return res.status(422).json({ error: message });
+        }
         res.status(500).json({ error: 'Processing failed' });
     }
 });

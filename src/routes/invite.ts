@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
+import { seedHouseholdStarterTags } from '../lib/tags';
 
 const router = Router();
 
@@ -10,6 +11,7 @@ router.post('/create', async (req: any, res) => {
     // Create household if user doesn't have one.
     if (!user?.householdId) {
         const household = await prisma.household.create({ data: {} });
+        await seedHouseholdStarterTags(household.id);
         user = await prisma.user.update({
             where: { id: req.userId },
             data: { householdId: household.id },

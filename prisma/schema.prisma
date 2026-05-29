@@ -13,6 +13,7 @@ model Household {
   users     User[]
   invites   HouseholdInvite[]
   items     ListItem[]
+  tags      HouseholdTag[]
 }
 
 model User {
@@ -46,17 +47,30 @@ model ListItem {
   householdId   String
   ownerId       String
   fromUserId    String?
-  type          String    // TASK | NOTE | SHARED_TASK | SHARED_NOTE
-  displayType   String    // TASK | NOTE | SHARED TASK | SHARED NOTE
+  type          String    // TASK | NOTE | SHARED_TASK | SHARED_NOTE | FOR_PARTNER
+  displayType   String    // TASK | NOTE | SHARED TASK | SHARED NOTE | FOR [NAME]
   text          String
   rawTranscript String?
   done          Boolean   @default(false)
   doneAt        DateTime?
   dueDate       DateTime?
   reminderAt    DateTime?
+  tags          String[]  @default([])
   createdAt     DateTime  @default(now())
 
   household     Household @relation(fields: [householdId], references: [id])
   owner         User      @relation("owner", fields: [ownerId], references: [id])
   fromUser      User?     @relation("routedFrom", fields: [fromUserId], references: [id])
+}
+
+model HouseholdTag {
+  id          String   @id @default(uuid())
+  householdId String
+  name        String
+  emoji       String?
+  createdAt   DateTime @default(now())
+
+  household Household @relation(fields: [householdId], references: [id])
+
+  @@unique([householdId, name])
 }

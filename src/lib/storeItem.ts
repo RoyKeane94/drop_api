@@ -1,59 +1,111 @@
 import { prisma } from './prisma';
 import { classify } from './classify';
+import { seedHouseholdStarterTags } from './tags';
 
 export async function storeItem(rawText: string, userId: string) {
-    const result = await classify(rawText);
-
     const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
             household: {
-                include: { users: { where: { id: { not: userId } } } },
+                include: {
+                    users: { where: { id: { not: userId } } },
+                    tags: true,
+                },
             },
         },
     });
 
     if (!user?.householdId) throw new Error('User has no household');
 
-    let ownerId = userId;
-    let displayType: string;
+    let householdTags = user.household?.tags ?? [];
+    if (householdTags.length === 0) {
+        await seedHouseholdStarterTags(user.householdId);
+        householdTags = await prisma.householdTag.findMany({
+            where: { householdId: user.householdId },
+            orderBy: { name: 'asc' },
+        });
+    }
+    const tagNames = householdTags.map((tag) => tag.name);
+    const partnerName = user.household?.users[0]?.name ?? undefined;
+    const today = new Date().toISOString().split('T')[0];
+    const results = await classify(rawText, today, partnerName, tagNames);
+    const clearResults = results.filter((result) => !result.unclear && result.text.trim().length > 0);
+    if (clearResults.length == 0) {
+        throw new Error("Couldn't quite catch that — try again.");
+    }
 
-    switch (result.type) {
-    case 'TASK':
-        displayType = 'TASK';
-        break;
-    case 'NOTE':
-        displayType = 'NOTE';
-        break;
-    case 'SHARED_TASK':
-    case 'SHARED_NOTE': {
-        displayType = result.type === 'SHARED_TASK' ? 'SHARED TASK' : 'SHARED NOTE';
-        if (result.routeTo) {
+    const partner = user.household?.users[0];
+    const createdItems = await Promise.all(clearResults.map(async (result) => {
+        const resolvedTag = resolveTagName(result.tag, tagNames);
+        let ownerId = userId;
+        let displayType: string = result.type;
+
+        if (
+            (result.type === 'FOR_PARTNER' || result.type === 'SHARED_TASK' || result.type === 'SHARED_NOTE')
+            && result.routeTo
+        ) {
             const match = user.household?.users.find(
                 (member) => member.name?.toLowerCase() === result.routeTo!.toLowerCase(),
             );
-            if (match) ownerId = match.id;
+            if (result.type === 'FOR_PARTNER' && match) {
+                ownerId = match.id;
+                displayType = `FOR ${result.routeTo.toUpperCase()}`;
+            } else if (result.type !== 'FOR_PARTNER') {
+                displayType = result.type.replace('_', ' ');
+            } else if (!match && partner) {
+                ownerId = partner.id;
+                displayType = `FOR ${(partner.name ?? 'PARTNER').toUpperCase()}`;
+            }
+        } else if (result.type === 'SHARED_TASK' || result.type === 'SHARED_NOTE') {
+            displayType = result.type.replace('_', ' ');
         }
-        break;
-    }
-    }
 
-    const item = await prisma.listItem.create({
-        data: {
-            householdId: user.householdId,
-            ownerId,
-            fromUserId: ownerId !== userId ? userId : null,
-            type: result.type,
-            displayType,
-            text: result.text,
-            rawTranscript: rawText,
-            dueDate: result.dueDate ? new Date(result.dueDate) : null,
-            reminderAt: result.reminderAt ? new Date(result.reminderAt) : null,
-        },
-        include: {
-            fromUser: { select: { name: true } },
-        },
-    });
+        const item = await prisma.listItem.create({
+            data: {
+                householdId: user.householdId!,
+                ownerId,
+                fromUserId: ownerId !== userId ? userId : undefined,
+                type: result.type,
+                displayType,
+                text: result.text,
+                rawTranscript: rawText,
+                tags: [resolvedTag],
+                dueDate: result.dueDate ? new Date(result.dueDate) : null,
+                reminderAt: result.reminderAt ? new Date(result.reminderAt) : null,
+            },
+            include: { fromUser: { select: { name: true } } },
+        });
 
-    return item;
+        return {
+            ...item,
+            suggestedNewTag: normalizeSuggestedTag(result.suggestedNewTag, tagNames),
+        };
+    }));
+
+    return {
+        ...createdItems[0],
+        createdCount: createdItems.length,
+        additionalItems: createdItems.slice(1),
+    };
+}
+
+function resolveTagName(tag: string | null, existingTagNames: string[]): string {
+    const trimmed = tag?.trim();
+    if (trimmed) {
+        const match = existingTagNames.find(
+            (name) => name.toLowerCase() == trimmed.toLowerCase(),
+        );
+        if (match) return match;
+    }
+    const admin = existingTagNames.find((name) => name.toLowerCase() == 'admin');
+    if (admin) return admin;
+    if (existingTagNames[0]) return existingTagNames[0];
+    return 'Admin';
+}
+
+function normalizeSuggestedTag(suggested: string | null, existingTagNames: string[]): string | null {
+    const trimmed = suggested?.trim();
+    if (!trimmed) return null;
+    const exists = existingTagNames.some((name) => name.toLowerCase() == trimmed.toLowerCase());
+    return exists ? null : trimmed;
 }

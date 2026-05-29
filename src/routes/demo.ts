@@ -11,7 +11,11 @@ router.post('/capture', async (req, res) => {
     if (!text?.trim()) return res.status(400).json({ error: 'text required' });
 
     try {
-        const result = await classify(text);
+        const today = new Date().toISOString().split('T')[0];
+        const [result] = await classify(text, today);
+        if (!result || result.unclear) {
+            return res.status(422).json({ error: "Couldn't quite catch that — try again." });
+        }
         res.json({
             type: result.type,
             displayType: result.type.replace(/_/g, ' '),
@@ -31,7 +35,11 @@ router.post('/audio', upload.single('audio'), async (req, res) => {
         if (!transcript.trim()) {
             return res.status(422).json({ error: 'No speech detected' });
         }
-        const result = await classify(transcript);
+        const today = new Date().toISOString().split('T')[0];
+        const [result] = await classify(transcript, today);
+        if (!result || result.unclear) {
+            return res.status(422).json({ error: "Couldn't quite catch that — try again." });
+        }
         res.json({
             rawText: transcript,
             type: result.type,

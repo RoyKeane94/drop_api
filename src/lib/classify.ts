@@ -4,20 +4,27 @@ import { buildClassifyPrompt } from './prompts/classify';
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export interface ClassifyResult {
-    type: 'TASK' | 'NOTE' | 'SHARED_TASK' | 'SHARED_NOTE';
+    type: 'TASK' | 'NOTE' | 'SHARED_TASK' | 'SHARED_NOTE' | 'FOR_PARTNER';
     text: string;
     routeTo: string | null;
     dueDate: string | null;
     reminderAt: string | null;
+    tag: string | null;
+    suggestedNewTag: string | null;
+    unclear: boolean;
 }
 
-export async function classify(rawText: string): Promise<ClassifyResult> {
-    const today = new Date().toISOString().split('T')[0];
+export async function classify(
+    rawText: string,
+    today: string,
+    partnerName?: string,
+    tags: string[] = [],
+): Promise<ClassifyResult[]> {
 
     const msg = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 256,
-        system: buildClassifyPrompt(today),
+        system: buildClassifyPrompt(today, partnerName, tags),
         messages: [{ role: 'user', content: rawText }],
     });
 
@@ -26,5 +33,19 @@ export async function classify(rawText: string): Promise<ClassifyResult> {
         throw new Error('Classifier returned no text content');
     }
 
-    return JSON.parse(rawBlock.text.replace(/```json|```/g, '').trim()) as ClassifyResult;
+    const parsed = JSON.parse(rawBlock.text.replace(/```json|```/g, '').trim()) as
+    | Partial<ClassifyResult>
+    | Array<Partial<ClassifyResult>>;
+    const rawItems = Array.isArray(parsed) ? parsed : [parsed];
+
+    return rawItems.slice(0, 3).map((item) => ({
+        type: (item.type ?? 'NOTE') as ClassifyResult['type'],
+        text: (item.text ?? rawText.trim()).trim(),
+        routeTo: item.routeTo ?? null,
+        dueDate: item.dueDate ?? null,
+        reminderAt: item.reminderAt ?? null,
+        tag: item.tag ?? null,
+        suggestedNewTag: item.suggestedNewTag ?? null,
+        unclear: item.unclear ?? false,
+    }));
 }
