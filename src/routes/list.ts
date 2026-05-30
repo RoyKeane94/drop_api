@@ -84,12 +84,12 @@ router.patch('/:id', async (req: any, res) => {
         return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { text, type } = req.body as { text?: string; type?: string };
+    const { text, type, reminderAt } = req.body as { text?: string; type?: string; reminderAt?: string | null };
     const nextText = text?.trim();
     const hasPartner = (user.household?.users.length ?? 0) > 0;
 
-    if (!nextText && !type) {
-        return res.status(400).json({ error: 'Text or type required' });
+    if (!nextText && !type && reminderAt === undefined) {
+        return res.status(400).json({ error: 'Text, type, or reminderAt required' });
     }
 
     if (type && !isEditableItemType(type)) {
@@ -107,6 +107,7 @@ router.patch('/:id', async (req: any, res) => {
             updates: {
                 text: nextText || undefined,
                 type: type as any,
+                reminderAt: reminderAt === undefined ? undefined : reminderAt,
             },
         });
         res.json(item);

@@ -1,14 +1,19 @@
 import type { ClassifyResult } from './classify';
 
 const REMINDER_INTENT =
-    /\b(remind(?:\s+me|\s+us)?|don't forget|do not forget|don't let me forget|do not let me forget|set (?:an? )?alert|alert me|nudge me)\b/i;
+    /\b(remind(?:\s+me|\s+us|er)?|don't forget|do not forget|don't let me forget|do not let me forget|remember to|set (?:an? )?reminder|set (?:an? )?alert|alert me|nudge me)\b/i;
 
 export function hasReminderIntent(text: string): boolean {
     return REMINDER_INTENT.test(text);
 }
 
+export interface NormalizedCaptureDates {
+    result: ClassifyResult;
+    needsReminderTimeConfirmation: boolean;
+}
+
 /** Enforce dueDate vs reminderAt rules after Haiku classification. */
-export function normalizeCaptureDates(rawText: string, result: ClassifyResult): ClassifyResult {
+export function normalizeCaptureDates(rawText: string, result: ClassifyResult): NormalizedCaptureDates {
     const reminderRequested =
         hasReminderIntent(rawText) || hasReminderIntent(result.text);
 
@@ -25,10 +30,16 @@ export function normalizeCaptureDates(rawText: string, result: ClassifyResult): 
     }
 
     if (!dueDate && !reminderAt) {
-        return { ...result, dueDate: null, reminderAt: null };
+        return {
+            result: { ...result, dueDate: null, reminderAt: null },
+            needsReminderTimeConfirmation: false,
+        };
     }
 
-    return { ...result, dueDate, reminderAt };
+    return {
+        result: { ...result, dueDate, reminderAt },
+        needsReminderTimeConfirmation: reminderRequested && !!dueDate,
+    };
 }
 
 function parseDateOnly(value: string | null | undefined): string | null {

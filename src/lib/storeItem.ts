@@ -38,13 +38,19 @@ export async function storeItem(rawText: string, userId: string) {
     const results = await classify(rawText, today, partnerName, tagNames, hasPartner);
     const clearResults = results
         .filter((result) => !result.unclear && result.text.trim().length > 0)
-        .map((result) => normalizeCaptureDates(rawText, hasPartner ? result : normalizeSoloResult(result)));
+        .map((result) => {
+            const normalized = normalizeCaptureDates(
+                rawText,
+                hasPartner ? result : normalizeSoloResult(result),
+            );
+            return normalized;
+        });
     if (clearResults.length == 0) {
         throw new Error("Couldn't quite catch that — try again.");
     }
 
     const partner = user.household?.users[0];
-    const createdItems = await Promise.all(clearResults.map(async (result) => {
+    const createdItems = await Promise.all(clearResults.map(async ({ result, needsReminderTimeConfirmation }) => {
         const resolvedTag = resolveTagName(result.tag, tagNames);
         const presentation = resolveItemPresentation({
             type: result.type,
@@ -73,6 +79,7 @@ export async function storeItem(rawText: string, userId: string) {
         return {
             ...item,
             suggestedNewTag: normalizeSuggestedTag(result.suggestedNewTag, tagNames),
+            reminderNeedsTimeConfirmation: needsReminderTimeConfirmation,
         };
     }));
 

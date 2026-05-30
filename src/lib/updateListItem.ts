@@ -17,6 +17,7 @@ export async function updateListItem(params: {
         text?: string;
         type?: ItemType;
         dueDate?: string | null;
+        reminderAt?: string | null;
         tag?: string | null;
     };
 }) {
@@ -63,6 +64,7 @@ export async function updateListItem(params: {
         ownerId: string;
         fromUserId: string | null;
         dueDate?: Date | null;
+        reminderAt?: Date | null;
         tags?: string[];
     } = {
         type: nextType,
@@ -78,6 +80,10 @@ export async function updateListItem(params: {
 
     if (params.updates.dueDate !== undefined) {
         data.dueDate = params.updates.dueDate ? new Date(params.updates.dueDate) : null;
+    }
+
+    if (params.updates.reminderAt !== undefined) {
+        data.reminderAt = params.updates.reminderAt ? new Date(params.updates.reminderAt) : null;
     }
 
     if (params.updates.tag !== undefined) {
