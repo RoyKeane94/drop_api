@@ -1,8 +1,14 @@
 import { prisma } from './prisma';
 import { classify, type ClassifyResult } from './classify';
+import { normalizeCaptureDates } from './normalizeCaptureDates';
 import { seedHouseholdStarterTags } from './tags';
+import { resolveItemPresentation } from './resolveItemPresentation';
+import { tryEditCapture } from './tryEditCapture';
 
 export async function storeItem(rawText: string, userId: string) {
+    const edited = await tryEditCapture(rawText, userId);
+    if (edited) return edited;
+
     const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
@@ -32,7 +38,7 @@ export async function storeItem(rawText: string, userId: string) {
     const results = await classify(rawText, today, partnerName, tagNames, hasPartner);
     const clearResults = results
         .filter((result) => !result.unclear && result.text.trim().length > 0)
-        .map((result) => (hasPartner ? result : normalizeSoloResult(result)));
+        .map((result) => normalizeCaptureDates(rawText, hasPartner ? result : normalizeSoloResult(result)));
     if (clearResults.length == 0) {
         throw new Error("Couldn't quite catch that — try again.");
     }
@@ -40,36 +46,21 @@ export async function storeItem(rawText: string, userId: string) {
     const partner = user.household?.users[0];
     const createdItems = await Promise.all(clearResults.map(async (result) => {
         const resolvedTag = resolveTagName(result.tag, tagNames);
-        let ownerId = userId;
-        let displayType: string = result.type;
-
-        if (
-            (result.type === 'FOR_PARTNER' || result.type === 'SHARED_TASK' || result.type === 'SHARED_NOTE')
-            && result.routeTo
-        ) {
-            const match = user.household?.users.find(
-                (member) => member.name?.toLowerCase() === result.routeTo!.toLowerCase(),
-            );
-            if (result.type === 'FOR_PARTNER' && match) {
-                ownerId = match.id;
-                displayType = `FOR ${result.routeTo.toUpperCase()}`;
-            } else if (result.type !== 'FOR_PARTNER') {
-                displayType = result.type.replace('_', ' ');
-            } else if (!match && partner) {
-                ownerId = partner.id;
-                displayType = `FOR ${(partner.name ?? 'PARTNER').toUpperCase()}`;
-            }
-        } else if (result.type === 'SHARED_TASK' || result.type === 'SHARED_NOTE') {
-            displayType = result.type.replace('_', ' ');
-        }
+        const presentation = resolveItemPresentation({
+            type: result.type,
+            userId,
+            partner,
+            routeTo: result.routeTo,
+            householdMembers: user.household?.users ?? [],
+        });
 
         const item = await prisma.listItem.create({
             data: {
                 householdId: user.householdId!,
-                ownerId,
-                fromUserId: ownerId !== userId ? userId : undefined,
+                ownerId: presentation.ownerId,
+                fromUserId: presentation.fromUserId,
                 type: result.type,
-                displayType,
+                displayType: presentation.displayType,
                 text: result.text,
                 rawTranscript: rawText,
                 tags: [resolvedTag],

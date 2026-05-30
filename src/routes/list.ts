@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { seedHouseholdStarterTags } from '../lib/tags';
+import { isEditableItemType } from '../lib/resolveItemPresentation';
+import { updateListItem } from '../lib/updateListItem';
 
 const router = Router();
 
@@ -63,7 +65,17 @@ router.patch('/:id/done', async (req: any, res) => {
 
 // PATCH /list/:id
 router.patch('/:id', async (req: any, res) => {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        include: {
+            household: {
+                include: {
+                    users: { where: { id: { not: req.userId } } },
+                    tags: true,
+                },
+            },
+        },
+    });
     if (!user?.householdId) return res.status(403).json({ error: 'No household' });
 
     const existing = await prisma.listItem.findUnique({ where: { id: req.params.id } });
@@ -72,19 +84,38 @@ router.patch('/:id', async (req: any, res) => {
         return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { text } = req.body as { text?: string };
+    const { text, type } = req.body as { text?: string; type?: string };
     const nextText = text?.trim();
-    if (!nextText) {
-        return res.status(400).json({ error: 'Text required' });
+    const hasPartner = (user.household?.users.length ?? 0) > 0;
+
+    if (!nextText && !type) {
+        return res.status(400).json({ error: 'Text or type required' });
     }
 
-    const item = await prisma.listItem.update({
-        where: { id: req.params.id },
-        data: { text: nextText },
-        include: { fromUser: { select: { name: true } } },
-    });
+    if (type && !isEditableItemType(type)) {
+        return res.status(400).json({ error: 'Invalid item type' });
+    }
 
-    res.json(item);
+    try {
+        const item = await updateListItem({
+            itemId: req.params.id,
+            userId: req.userId,
+            householdId: user.householdId,
+            partner: user.household?.users[0] ?? null,
+            hasPartner,
+            tagNames: user.household?.tags.map((tag) => tag.name) ?? [],
+            updates: {
+                text: nextText || undefined,
+                type: type as any,
+            },
+        });
+        res.json(item);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Update failed';
+        if (message === 'Item not found') return res.status(404).json({ error: message });
+        if (message === 'Forbidden') return res.status(403).json({ error: message });
+        return res.status(400).json({ error: message });
+    }
 });
 
 // POST /list/clear-completed

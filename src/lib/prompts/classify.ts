@@ -57,10 +57,17 @@ Rules — follow in order:
    NOTE examples: "Boiler man Tuesday", "School play Friday 6pm"
 ${coupleRules}
 8. ${tagLine}
-9. Extract dueDate (YYYY-MM-DD) if a date is mentioned.
-   Extract reminderAt (YYYY-MM-DDTHH:MM:00) if a specific reminder time is mentioned.
-   Resolve relative dates: tomorrow = day after ${today}.
-   Morning = 09:00. Afternoon = 14:00. Evening = 18:00.
+9. Dates and reminders — two separate fields:
+   - dueDate (YYYY-MM-DD): set when the capture mentions a date or deadline, even without reminder language.
+     Examples: "buy sausages tomorrow", "dentist Friday", "permission slip by Friday".
+   - reminderAt (YYYY-MM-DDTHH:MM:00): set ONLY when the user explicitly asks to be reminded.
+     Trigger phrases: "remind me", "don't let me forget", "set an alert", "don't forget to".
+   - If reminder language is present but NO time is given, set reminderAt to 09:00 on the due date.
+   - If reminder language includes a specific time ("at 2", "2pm", "Friday at 2"), set reminderAt to that exact time.
+   - Morning = 09:00. Afternoon = 14:00. Evening = 18:00.
+   - When only a due date is mentioned (no reminder language), set dueDate and leave reminderAt null.
+   - When a reminder is requested, set BOTH dueDate and reminderAt.
+   Resolve relative dates against ${today}.
 10. If the input is completely garbled and has no recoverable meaning,
     set unclear: true.
 11. If the capture contains multiple distinct tasks/notes, split into separate items.
@@ -110,8 +117,14 @@ Output: {"type":"TASK","text":"School trip permission slip needed by Friday","ro
 Input: "buy sausages tomorrow"
 Output: {"type":"TASK","text":"Buy sausages","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false}
 
+Input: "remind me to buy sausages tomorrow"
+Output: {"type":"TASK","text":"Buy sausages","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDT09:00:00","tag":"Shop","suggestedNewTag":null,"unclear":false}
+
+Input: "remind me about the dentist Friday at 2"
+Output: {"type":"TASK","text":"Dentist","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDT14:00:00","tag":"Health","suggestedNewTag":null,"unclear":false}
+
 Input: "remind me to call the dentist thursday morning"
-Output: {"type":"TASK","text":"Call the dentist","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDTHH:MM:00","tag":"Health","suggestedNewTag":null,"unclear":false}
+Output: {"type":"TASK","text":"Call the dentist","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDT09:00:00","tag":"Health","suggestedNewTag":null,"unclear":false}
 ${coupleExamples}
 Input: "dentist rang to say jake needs a filling"
 Output: {"type":"NOTE","text":"Dentist rang — Jake needs a filling","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Health","suggestedNewTag":null,"unclear":false}
