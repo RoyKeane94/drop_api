@@ -1,23 +1,36 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { formatCode } from '../lib/inviteCode';
+import { deleteAccountAndHousehold } from '../lib/householdCleanup';
 
 const router = Router();
 
-router.get('/me', async (req: any, res) => {
-    const user = await prisma.user.findUnique({
-        where: { id: req.userId },
-        include: { household: { select: { inviteCode: true } } },
-    });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({
+function userPayload(user: {
+    id: string;
+    householdId: string | null;
+    name: string | null;
+    email: string | null;
+    onboardingDone: boolean;
+    household: { inviteCode: string; subscriptionActive: boolean } | null;
+}) {
+    return {
         id: user.id,
         householdId: user.householdId,
         name: user.name,
         email: user.email,
         onboardingDone: user.onboardingDone,
         inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
+        householdSubscriptionActive: user.household?.subscriptionActive ?? false,
+    };
+}
+
+router.get('/me', async (req: any, res) => {
+    const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
     });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(userPayload(user));
 });
 
 router.patch('/me', async (req: any, res) => {
@@ -25,16 +38,19 @@ router.patch('/me', async (req: any, res) => {
     const user = await prisma.user.update({
         where: { id: req.userId },
         data: { onboardingDone },
-        include: { household: { select: { inviteCode: true } } },
+        include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
     });
-    res.json({
-        id: user.id,
-        householdId: user.householdId,
-        name: user.name,
-        email: user.email,
-        onboardingDone: user.onboardingDone,
-        inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
-    });
+    res.json(userPayload(user));
+});
+
+router.delete('/me', async (req: any, res) => {
+    try {
+        await deleteAccountAndHousehold(req.userId);
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Account deletion failed:', error);
+        res.status(500).json({ error: 'Could not delete account' });
+    }
 });
 
 router.post('/tags', async (req: any, res) => {

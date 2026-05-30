@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { classify } from './classify';
+import { classify, type ClassifyResult } from './classify';
 import { seedHouseholdStarterTags } from './tags';
 
 export async function storeItem(rawText: string, userId: string) {
@@ -26,10 +26,13 @@ export async function storeItem(rawText: string, userId: string) {
         });
     }
     const tagNames = householdTags.map((tag) => tag.name);
-    const partnerName = user.household?.users[0]?.name ?? undefined;
+    const hasPartner = (user.household?.users.length ?? 0) > 0;
+    const partnerName = hasPartner ? (user.household?.users[0]?.name ?? undefined) : undefined;
     const today = new Date().toISOString().split('T')[0];
-    const results = await classify(rawText, today, partnerName, tagNames);
-    const clearResults = results.filter((result) => !result.unclear && result.text.trim().length > 0);
+    const results = await classify(rawText, today, partnerName, tagNames, hasPartner);
+    const clearResults = results
+        .filter((result) => !result.unclear && result.text.trim().length > 0)
+        .map((result) => (hasPartner ? result : normalizeSoloResult(result)));
     if (clearResults.length == 0) {
         throw new Error("Couldn't quite catch that — try again.");
     }
@@ -87,6 +90,18 @@ export async function storeItem(rawText: string, userId: string) {
         createdCount: createdItems.length,
         additionalItems: createdItems.slice(1),
     };
+}
+
+function normalizeSoloResult(result: ClassifyResult): ClassifyResult {
+    switch (result.type) {
+        case 'SHARED_TASK':
+        case 'FOR_PARTNER':
+            return { ...result, type: 'TASK', routeTo: null };
+        case 'SHARED_NOTE':
+            return { ...result, type: 'NOTE', routeTo: null };
+        default:
+            return result;
+    }
 }
 
 function resolveTagName(tag: string | null, existingTagNames: string[]): string {

@@ -1,8 +1,28 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { formatCode, normaliseCode } from '../lib/inviteCode';
+import { purgeHouseholdData } from '../lib/householdCleanup';
 
 const router = Router();
+
+function userPayload(user: {
+    id: string;
+    householdId: string | null;
+    name: string | null;
+    email: string | null;
+    onboardingDone: boolean;
+    household: { inviteCode: string; subscriptionActive: boolean } | null;
+}) {
+    return {
+        id: user.id,
+        householdId: user.householdId,
+        name: user.name,
+        email: user.email,
+        onboardingDone: user.onboardingDone,
+        inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
+        householdSubscriptionActive: user.household?.subscriptionActive ?? false,
+    };
+}
 
 router.get('/code', async (req: any, res) => {
     const user = await prisma.user.findUnique({
@@ -60,25 +80,44 @@ router.post('/join', async (req: any, res) => {
 
     const updatedUser = await prisma.user.findUnique({
         where: { id: req.userId },
-        include: { household: { select: { inviteCode: true } } },
+        include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
     });
 
     if (!updatedUser) {
         return res.status(404).json({ error: 'User not found.' });
     }
 
-    res.json({
-        user: {
-            id: updatedUser.id,
-            householdId: updatedUser.householdId,
-            name: updatedUser.name,
-            email: updatedUser.email,
-            onboardingDone: updatedUser.onboardingDone,
-            inviteCode: updatedUser.household
-                ? formatCode(updatedUser.household.inviteCode)
-                : null,
-        },
+    res.json({ user: userPayload(updatedUser) });
+});
+
+router.post('/subscription/activate', async (req: any, res) => {
+    const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { householdId: true },
     });
+    if (!user?.householdId) {
+        return res.status(400).json({ error: 'No household' });
+    }
+
+    await prisma.household.update({
+        where: { id: user.householdId },
+        data: { subscriptionActive: true },
+    });
+
+    res.json({ ok: true });
+});
+
+router.post('/subscription/deactivate', async (req: any, res) => {
+    const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { householdId: true },
+    });
+    if (!user?.householdId) {
+        return res.status(400).json({ error: 'No household' });
+    }
+
+    await purgeHouseholdData(user.householdId);
+    res.json({ ok: true });
 });
 
 export default router;

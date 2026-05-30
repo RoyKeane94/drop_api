@@ -2,17 +2,47 @@ export function buildClassifyPrompt(
     today: string,
     partnerName?: string,
     tags: string[] = [],
+    hasPartner = true,
 ): string {
-    const partnerLine = partnerName
-        ? `The user's partner is called ${partnerName}.`
-        : `The partner name is unknown.`;
+    const partnerLine = hasPartner
+        ? (partnerName
+            ? `The user's partner is called ${partnerName}.`
+            : `The partner name is unknown.`)
+        : `This is a solo household — there is no partner yet.`;
 
     const tagLine = tags.length > 0
         ? `Assign exactly one tag from this list: ${tags.join(', ')}.`
         : `Assign exactly one tag. Suggest a short one-or-two-word tag name.`;
 
+    const coupleRules = hasPartner
+        ? `
+6. If text contains "tell/remind/ask/let [name] know" or "for [name]"
+   -> FOR_PARTNER. Extract name into routeTo.
+7. If text contains "we need to", "both of us", "don't forget we"
+   -> SHARED_TASK (if action required) or SHARED_NOTE (if informational).`
+        : `
+6. Even if the capture mentions a partner, "we", or "both of us", classify as
+   TASK or NOTE only — never FOR_PARTNER, SHARED_TASK, or SHARED_NOTE.`;
+
+    const typeOptions = hasPartner
+        ? '"TASK"|"NOTE"|"SHARED_TASK"|"SHARED_NOTE"|"FOR_PARTNER"'
+        : '"TASK"|"NOTE"';
+
+    const coupleExamples = hasPartner
+        ? `
+Input: "tell sarah the school run is swapped friday"
+Output: {"type":"FOR_PARTNER","text":"School run is swapped Friday","routeTo":"Sarah","dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Kids","suggestedNewTag":null,"unclear":false}
+
+Input: "we both need to remember dentist appointment thursday morning"
+Output: {"type":"SHARED_NOTE","text":"Dentist appointment Thursday morning","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDTHH:MM:00","tag":"Health","suggestedNewTag":null,"unclear":false}
+`
+        : `
+Input: "we both need to remember dentist appointment thursday morning"
+Output: {"type":"NOTE","text":"Dentist appointment Thursday morning","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDTHH:MM:00","tag":"Health","suggestedNewTag":null,"unclear":false}
+`;
+
     return `
-You are a capture classifier for Drop, a shared household app for couples.
+You are a capture classifier for Drop, a household task app.
 Today is ${today}. ${partnerLine}
 
 Rules — follow in order:
@@ -25,10 +55,7 @@ Rules — follow in order:
 5. If text starts with a verb -> TASK. If not -> NOTE.
    TASK examples: "Call Dave", "Pick up milk", "Book the dentist"
    NOTE examples: "Boiler man Tuesday", "School play Friday 6pm"
-6. If text contains "tell/remind/ask/let [name] know" or "for [name]"
-   -> FOR_PARTNER. Extract name into routeTo.
-7. If text contains "we need to", "both of us", "don't forget we"
-   -> SHARED_TASK (if action required) or SHARED_NOTE (if informational).
+${coupleRules}
 8. ${tagLine}
 9. Extract dueDate (YYYY-MM-DD) if a date is mentioned.
    Extract reminderAt (YYYY-MM-DDTHH:MM:00) if a specific reminder time is mentioned.
@@ -42,7 +69,7 @@ Rules — follow in order:
 Return ONLY valid JSON. No markdown, no preamble.
 
 {
-  "type": "TASK"|"NOTE"|"SHARED_TASK"|"SHARED_NOTE"|"FOR_PARTNER",
+  "type": ${typeOptions},
   "text": "cleaned text",
   "routeTo": "name or null",
   "dueDate": "YYYY-MM-DD or null",
@@ -55,7 +82,7 @@ Return ONLY valid JSON. No markdown, no preamble.
 OR, if there are multiple distinct items:
 [
   {
-    "type": "TASK"|"NOTE"|"SHARED_TASK"|"SHARED_NOTE"|"FOR_PARTNER",
+    "type": ${typeOptions},
     "text": "cleaned text",
     "routeTo": "name or null",
     "dueDate": "YYYY-MM-DD or null",
@@ -85,13 +112,7 @@ Output: {"type":"TASK","text":"Buy sausages","routeTo":null,"dueDate":"YYYY-MM-D
 
 Input: "remind me to call the dentist thursday morning"
 Output: {"type":"TASK","text":"Call the dentist","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDTHH:MM:00","tag":"Health","suggestedNewTag":null,"unclear":false}
-
-Input: "tell sarah the school run is swapped friday"
-Output: {"type":"FOR_PARTNER","text":"School run is swapped Friday","routeTo":"Sarah","dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Kids","suggestedNewTag":null,"unclear":false}
-
-Input: "we both need to remember dentist appointment thursday morning"
-Output: {"type":"SHARED_NOTE","text":"Dentist appointment Thursday morning","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDTHH:MM:00","tag":"Health","suggestedNewTag":null,"unclear":false}
-
+${coupleExamples}
 Input: "dentist rang to say jake needs a filling"
 Output: {"type":"NOTE","text":"Dentist rang — Jake needs a filling","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Health","suggestedNewTag":null,"unclear":false}
 

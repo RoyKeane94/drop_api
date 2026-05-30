@@ -8,12 +8,13 @@ datasource db {
 }
 
 model Household {
-  id         String   @id @default(uuid())
-  inviteCode String   @unique
-  createdAt  DateTime @default(now())
-  users      User[]
-  items      ListItem[]
-  tags       HouseholdTag[]
+  id                 String   @id @default(uuid())
+  inviteCode         String   @unique
+  subscriptionActive Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  users              User[]
+  items              ListItem[]
+  tags               HouseholdTag[]
 }
 
 model User {

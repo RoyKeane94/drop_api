@@ -44,7 +44,7 @@ authRouter.post('/apple', async (req, res) => {
         const token = signSessionToken(user.id);
         const userWithHousehold = await prisma.user.findUnique({
             where: { id: user.id },
-            include: { household: true },
+            include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
         });
         return res.status(200).json({
             token,
@@ -57,6 +57,7 @@ authRouter.post('/apple', async (req, res) => {
                 inviteCode: userWithHousehold?.household
                     ? formatCode(userWithHousehold.household.inviteCode)
                     : null,
+                householdSubscriptionActive: userWithHousehold?.household?.subscriptionActive ?? false,
                 onboardingDone: user.onboardingDone,
             },
         });
