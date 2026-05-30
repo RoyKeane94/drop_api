@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { transcribe } from '../lib/whisper';
+import { isTranscriptionError, transcribe } from '../lib/whisper';
 import { storeItem } from '../lib/storeItem';
 
 const router = Router();
@@ -20,6 +20,9 @@ router.post('/audio', upload.single('audio'), async (req: any, res) => {
         res.json(item);
     } catch (err) {
         console.error('Audio capture error:', err);
+        if (isTranscriptionError(err)) {
+            return res.status(err.status).json({ error: err.userMessage });
+        }
         const message = err instanceof Error ? err.message : 'Processing failed';
         if (message.includes("Couldn't quite catch that")) {
             return res.status(422).json({ error: message });

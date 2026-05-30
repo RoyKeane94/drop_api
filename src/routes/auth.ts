@@ -3,6 +3,7 @@ import { verifyAppleToken } from '../lib/appleAuth';
 import { prisma } from '../lib/prisma';
 import { signSessionToken } from '../lib/session';
 import { seedHouseholdStarterTags } from '../lib/tags';
+import { formatCode, generateInviteCode } from '../lib/inviteCode';
 
 const authRouter = Router();
 
@@ -30,9 +31,9 @@ authRouter.post('/apple', async (req, res) => {
         });
 
         // Every account owns a household from first sign-in.
-        // Invites then allow exactly one partner to join that household.
+        // Partner can join later using this household code.
         if (!user.householdId) {
-            const household = await prisma.household.create({ data: {} });
+            const household = await createHouseholdWithCode();
             await seedHouseholdStarterTags(household.id);
             user = await prisma.user.update({
                 where: { id: user.id },
@@ -41,11 +42,47 @@ authRouter.post('/apple', async (req, res) => {
         }
 
         const token = signSessionToken(user.id);
-        return res.status(200).json({ token, user });
+        const userWithHousehold = await prisma.user.findUnique({
+            where: { id: user.id },
+            include: { household: true },
+        });
+        return res.status(200).json({
+            token,
+            sessionToken: token,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                householdId: user.householdId,
+                inviteCode: userWithHousehold?.household
+                    ? formatCode(userWithHousehold.household.inviteCode)
+                    : null,
+                onboardingDone: user.onboardingDone,
+            },
+        });
     } catch (error) {
         console.error('Apple auth failed:', error);
         return res.status(401).json({ error: 'Invalid Apple identity token' });
     }
 });
+
+async function createHouseholdWithCode() {
+    while (true) {
+        const inviteCode = generateInviteCode();
+        try {
+            return await prisma.household.create({
+                data: { inviteCode },
+            });
+        } catch (error: unknown) {
+            const isUniqueViolation = (
+                typeof error == 'object'
+                && error !== null
+                && 'code' in error
+                && (error as { code?: unknown }).code == 'P2002'
+            );
+            if (!isUniqueViolation) throw error;
+        }
+    }
+}
 
 export default authRouter;

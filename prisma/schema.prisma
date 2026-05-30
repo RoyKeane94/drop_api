@@ -8,12 +8,12 @@ datasource db {
 }
 
 model Household {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  users     User[]
-  invites   HouseholdInvite[]
-  items     ListItem[]
-  tags      HouseholdTag[]
+  id         String   @id @default(uuid())
+  inviteCode String   @unique
+  createdAt  DateTime @default(now())
+  users      User[]
+  items      ListItem[]
+  tags       HouseholdTag[]
 }
 
 model User {
@@ -24,22 +24,9 @@ model User {
   onboardingDone Boolean   @default(false)
   createdAt      DateTime  @default(now())
 
-  household      Household?        @relation(fields: [householdId], references: [id])
-  invitesCreated HouseholdInvite[]
-  ownedItems     ListItem[]        @relation("owner")
-  routedItems    ListItem[]        @relation("routedFrom")
-}
-
-model HouseholdInvite {
-  id          String    @id @default(uuid())
-  householdId String
-  createdById String
-  token       String    @unique @default(uuid())
-  usedAt      DateTime?
-  createdAt   DateTime  @default(now())
-
-  household   Household @relation(fields: [householdId], references: [id])
-  createdBy   User      @relation(fields: [createdById], references: [id])
+  household   Household? @relation(fields: [householdId], references: [id])
+  ownedItems  ListItem[] @relation("owner")
+  routedItems ListItem[] @relation("routedFrom")
 }
 
 model ListItem {

@@ -1,15 +1,23 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
+import { formatCode } from '../lib/inviteCode';
 
 const router = Router();
 
 router.get('/me', async (req: any, res) => {
     const user = await prisma.user.findUnique({
         where: { id: req.userId },
-        select: { id: true, householdId: true, name: true, onboardingDone: true },
+        include: { household: { select: { inviteCode: true } } },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    res.json({
+        id: user.id,
+        householdId: user.householdId,
+        name: user.name,
+        email: user.email,
+        onboardingDone: user.onboardingDone,
+        inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
+    });
 });
 
 router.patch('/me', async (req: any, res) => {
@@ -17,9 +25,16 @@ router.patch('/me', async (req: any, res) => {
     const user = await prisma.user.update({
         where: { id: req.userId },
         data: { onboardingDone },
-        select: { id: true, householdId: true, onboardingDone: true },
+        include: { household: { select: { inviteCode: true } } },
     });
-    res.json(user);
+    res.json({
+        id: user.id,
+        householdId: user.householdId,
+        name: user.name,
+        email: user.email,
+        onboardingDone: user.onboardingDone,
+        inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
+    });
 });
 
 router.post('/tags', async (req: any, res) => {

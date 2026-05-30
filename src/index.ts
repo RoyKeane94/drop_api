@@ -6,7 +6,7 @@ import authRouter from './routes/auth';
 import { authMiddleware } from './middleware/auth';
 import userRouter from './routes/users';
 import captureRouter from './routes/captures';
-import inviteRouter from './routes/invite';
+import householdRouter from './routes/household';
 import listRouter from './routes/list';
 import demoRouter from './routes/demo';
 
@@ -22,7 +22,7 @@ app.use('/auth', authRouter);
 app.use(authMiddleware);
 app.use('/users', userRouter);
 app.use('/captures', captureRouter);
-app.use('/invite', inviteRouter);
+app.use('/household', householdRouter);
 app.use('/list', listRouter);
 
 const PORT = process.env.PORT || 3001;

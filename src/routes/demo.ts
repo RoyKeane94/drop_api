@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { classify } from '../lib/classify';
 import multer from 'multer';
-import { transcribe } from '../lib/whisper';
+import { isTranscriptionError, transcribe } from '../lib/whisper';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -48,20 +48,12 @@ router.post('/audio', upload.single('audio'), async (req, res) => {
             dueDate: result.dueDate ?? null,
         });
     } catch (error: unknown) {
-        const detail = getErrorDetail(error);
-        console.error('Demo audio capture failed:', detail, error);
-        res.status(500).json({ error: `Audio processing failed: ${detail}` });
+        console.error('Demo audio capture failed:', error);
+        if (isTranscriptionError(error)) {
+            return res.status(error.status).json({ error: error.userMessage });
+        }
+        res.status(500).json({ error: 'Audio processing failed' });
     }
 });
-
-function getErrorDetail(error: unknown): string {
-    if (error && typeof error === 'object') {
-        const maybeMessage = (error as { message?: unknown }).message;
-        if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
-            return maybeMessage;
-        }
-    }
-    return 'unknown error';
-}
 
 export default router;
