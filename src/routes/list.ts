@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { seedHouseholdStarterTags } from '../lib/tags';
 import { isEditableItemType } from '../lib/resolveItemPresentation';
 import { updateListItem } from '../lib/updateListItem';
+import { listItemsVisibleToUser } from '../lib/listItemVisibility';
 
 const router = Router();
 
@@ -24,13 +25,7 @@ router.get('/', async (req: any, res) => {
     });
 
     const items = await prisma.listItem.findMany({
-        where: {
-            householdId: user.householdId,
-            OR: [
-                { type: { not: 'FOR_PARTNER' } },
-                { ownerId: req.userId },
-            ],
-        },
+        where: listItemsVisibleToUser(req.userId, user.householdId),
         orderBy: { createdAt: 'desc' },
         include: { fromUser: { select: { name: true } } },
     });

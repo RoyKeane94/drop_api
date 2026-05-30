@@ -3,6 +3,7 @@ import { prisma } from './prisma';
 import { buildEditCapturePrompt } from './prompts/editCapture';
 import { isEditableItemType, normalizeTypeForHousehold, type ItemType } from './resolveItemPresentation';
 import { updateListItem } from './updateListItem';
+import { listItemsVisibleToUser } from './listItemVisibility';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -37,13 +38,8 @@ export async function tryEditCapture(rawText: string, userId: string) {
     const hasPartner = (user.household?.users.length ?? 0) > 0;
     const items = await prisma.listItem.findMany({
         where: {
-            householdId: user.householdId,
+            ...listItemsVisibleToUser(userId, user.householdId),
             done: false,
-            type: { in: ['TASK', 'NOTE', 'SHARED_TASK', 'SHARED_NOTE'] },
-            OR: [
-                { type: { not: 'FOR_PARTNER' } },
-                { ownerId: userId },
-            ],
         },
         orderBy: { createdAt: 'desc' },
         take: 30,
