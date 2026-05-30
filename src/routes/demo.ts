@@ -60,7 +60,7 @@ router.post('/capture', async (req, res) => {
 
     try {
         const today = new Date().toISOString().split('T')[0];
-        const [result] = await classify(text, today, undefined, starterTagNames, false);
+        const [result] = await classify(text, today, [], undefined, starterTagNames, false);
         if (!result || result.unclear) {
             return res.status(422).json({ error: "Couldn't quite catch that — try again." });
         }
@@ -79,7 +79,7 @@ router.post('/audio', upload.single('audio'), async (req, res) => {
             return res.status(422).json({ error: 'No speech detected' });
         }
         const today = new Date().toISOString().split('T')[0];
-        const [result] = await classify(transcript, today, undefined, starterTagNames, false);
+        const [result] = await classify(transcript, today, [], undefined, starterTagNames, false);
         if (!result || result.unclear) {
             return res.status(422).json({ error: "Couldn't quite catch that — try again." });
         }

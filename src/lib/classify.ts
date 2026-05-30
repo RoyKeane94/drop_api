@@ -17,6 +17,7 @@ export interface ClassifyResult {
 export async function classify(
     rawText: string,
     today: string,
+    assigneeNames: string[] = [],
     partnerName?: string,
     tags: string[] = [],
     hasPartner = true,
@@ -25,7 +26,7 @@ export async function classify(
     const msg = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 256,
-        system: buildClassifyPrompt(today, partnerName, tags, hasPartner),
+        system: buildClassifyPrompt(today, assigneeNames, partnerName, tags, hasPartner),
         messages: [{ role: 'user', content: rawText }],
     });
 

@@ -14,7 +14,7 @@ export async function storeItem(rawText: string, userId: string) {
         include: {
             household: {
                 include: {
-                    users: { where: { id: { not: userId } } },
+                    users: true,
                     tags: true,
                 },
             },
@@ -32,10 +32,15 @@ export async function storeItem(rawText: string, userId: string) {
         });
     }
     const tagNames = householdTags.map((tag) => tag.name);
-    const hasPartner = (user.household?.users.length ?? 0) > 0;
-    const partnerName = hasPartner ? (user.household?.users[0]?.name ?? undefined) : undefined;
+    const allUsers = user.household?.users ?? [];
+    const otherUsers = allUsers.filter((member) => member.id !== userId);
+    const assigneeNames = otherUsers
+        .map((member) => member.name?.trim())
+        .filter((name): name is string => !!name);
+    const hasPartner = otherUsers.length > 0;
+    const partnerName = assigneeNames[0];
     const today = new Date().toISOString().split('T')[0];
-    const results = await classify(rawText, today, partnerName, tagNames, hasPartner);
+    const results = await classify(rawText, today, assigneeNames, partnerName, tagNames, hasPartner);
     const clearResults = results
         .filter((result) => !result.unclear && result.text.trim().length > 0)
         .map((result) => {
@@ -49,7 +54,7 @@ export async function storeItem(rawText: string, userId: string) {
         throw new Error("Couldn't quite catch that — try again.");
     }
 
-    const partner = user.household?.users[0];
+    const partner = otherUsers[0];
     const createdItems = await Promise.all(clearResults.map(async ({ result, needsDeadlineConfirmation, dueDateAllDay }) => {
         const resolvedTag = resolveTagName(result.tag, tagNames);
         const presentation = resolveItemPresentation({
@@ -57,7 +62,7 @@ export async function storeItem(rawText: string, userId: string) {
             userId,
             partner,
             routeTo: result.routeTo,
-            householdMembers: user.household?.users ?? [],
+            householdMembers: allUsers,
         });
 
         const item = await prisma.listItem.create({
@@ -65,7 +70,7 @@ export async function storeItem(rawText: string, userId: string) {
                 householdId: user.householdId!,
                 ownerId: presentation.ownerId,
                 fromUserId: presentation.fromUserId,
-                type: result.type,
+                type: presentation.type,
                 displayType: presentation.displayType,
                 text: result.text,
                 rawTranscript: rawText,
