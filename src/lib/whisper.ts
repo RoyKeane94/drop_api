@@ -25,9 +25,19 @@ export function isTranscriptionError(error: unknown): error is TranscriptionErro
     return error instanceof TranscriptionError;
 }
 
+const MIN_AUDIO_BYTES = 1500;
+
 export async function transcribe(buffer: Buffer): Promise<string> {
     if (!buffer || buffer.length == 0) {
         throw new TranscriptionError('NO_AUDIO', 400, 'Audio file required.');
+    }
+
+    if (buffer.length < MIN_AUDIO_BYTES) {
+        throw new TranscriptionError(
+            'NO_SPEECH',
+            422,
+            "Couldn't hear anything — hold the button a little longer.",
+        );
     }
 
     try {

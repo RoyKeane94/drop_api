@@ -45,7 +45,8 @@ Classify household captures for Drop. Today: ${today}. ${partner}
 6. Unreadable → unclear: true.
 ${partnerRules}
 
-Return ONLY valid JSON, no markdown:
+CRITICAL: Reply with ONLY a JSON object or array — no prose, no markdown, no explanation.
+Return ONLY valid JSON:
 {"type":${types},"text":"...","routeTo":"name or null","dueDate":"YYYY-MM-DD or null","reminderAt":"YYYY-MM-DDTHH:MM:00 or null","tag":"...","suggestedNewTag":"... or null","unclear":false}
 
 Examples:
