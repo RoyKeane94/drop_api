@@ -109,12 +109,18 @@ router.patch('/:id', async (req: any, res) => {
         return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { text, type, reminderAt } = req.body as { text?: string; type?: string; reminderAt?: string | null };
+    const { text, type, reminderAt, dueDate, dueDateAllDay } = req.body as {
+        text?: string;
+        type?: string;
+        reminderAt?: string | null;
+        dueDate?: string | null;
+        dueDateAllDay?: boolean;
+    };
     const nextText = text?.trim();
     const hasPartner = (user.household?.users.length ?? 0) > 0;
 
-    if (!nextText && !type && reminderAt === undefined) {
-        return res.status(400).json({ error: 'Text, type, or reminderAt required' });
+    if (!nextText && !type && reminderAt === undefined && dueDate === undefined && dueDateAllDay === undefined) {
+        return res.status(400).json({ error: 'Text, type, dueDate, or reminderAt required' });
     }
 
     if (type && !isEditableItemType(type)) {
@@ -133,6 +139,8 @@ router.patch('/:id', async (req: any, res) => {
                 text: nextText || undefined,
                 type: type as any,
                 reminderAt: reminderAt === undefined ? undefined : reminderAt,
+                dueDate: dueDate === undefined ? undefined : dueDate,
+                dueDateAllDay: dueDateAllDay === undefined ? undefined : dueDateAllDay,
             },
         });
         res.json(item);

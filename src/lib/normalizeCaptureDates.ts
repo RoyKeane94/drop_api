@@ -3,19 +3,28 @@ import type { ClassifyResult } from './classify';
 const REMINDER_INTENT =
     /\b(remind(?:\s+me|\s+us|er)?|don't forget|do not forget|don't let me forget|do not let me forget|remember to|set (?:an? )?reminder|set (?:an? )?alert|alert me|nudge me)\b/i;
 
+const EXPLICIT_TIME =
+    /\b(\d{1,2}(:\d{2})?\s?(am|pm|a\.m\.|p\.m\.)|\bat\s+\d{1,2}|morning|afternoon|evening|noon|midnight|\d{1,2}\s?(am|pm))\b/i;
+
 export function hasReminderIntent(text: string): boolean {
     return REMINDER_INTENT.test(text);
 }
 
+export function hasExplicitTime(text: string): boolean {
+    return EXPLICIT_TIME.test(text);
+}
+
 export interface NormalizedCaptureDates {
     result: ClassifyResult;
-    needsReminderTimeConfirmation: boolean;
+    needsDeadlineConfirmation: boolean;
+    dueDateAllDay: boolean;
 }
 
 /** Enforce dueDate vs reminderAt rules after Haiku classification. */
 export function normalizeCaptureDates(rawText: string, result: ClassifyResult): NormalizedCaptureDates {
     const reminderRequested =
         hasReminderIntent(rawText) || hasReminderIntent(result.text);
+    const explicitTime = hasExplicitTime(rawText) || hasExplicitTime(result.text);
 
     let dueDate = parseDateOnly(result.dueDate);
     let reminderAt = parseDateTime(result.reminderAt);
@@ -32,14 +41,22 @@ export function normalizeCaptureDates(rawText: string, result: ClassifyResult): 
     if (!dueDate && !reminderAt) {
         return {
             result: { ...result, dueDate: null, reminderAt: null },
-            needsReminderTimeConfirmation: false,
+            needsDeadlineConfirmation: false,
+            dueDateAllDay: false,
         };
     }
 
+    const dueDateAllDay = !!dueDate && !explicitTime;
+
     return {
         result: { ...result, dueDate, reminderAt },
-        needsReminderTimeConfirmation: reminderRequested && !!dueDate,
+        needsDeadlineConfirmation: true,
+        dueDateAllDay,
     };
+}
+
+export function parseAllDayDate(dateOnly: string): Date {
+    return new Date(`${dateOnly}T12:00:00.000Z`);
 }
 
 function parseDateOnly(value: string | null | undefined): string | null {

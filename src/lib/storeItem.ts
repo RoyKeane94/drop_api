@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 import { classify, type ClassifyResult } from './classify';
-import { normalizeCaptureDates } from './normalizeCaptureDates';
+import { normalizeCaptureDates, parseAllDayDate } from './normalizeCaptureDates';
 import { seedHouseholdStarterTags } from './tags';
 import { resolveItemPresentation } from './resolveItemPresentation';
 import { tryEditCapture } from './tryEditCapture';
@@ -50,7 +50,7 @@ export async function storeItem(rawText: string, userId: string) {
     }
 
     const partner = user.household?.users[0];
-    const createdItems = await Promise.all(clearResults.map(async ({ result, needsReminderTimeConfirmation }) => {
+    const createdItems = await Promise.all(clearResults.map(async ({ result, needsDeadlineConfirmation, dueDateAllDay }) => {
         const resolvedTag = resolveTagName(result.tag, tagNames);
         const presentation = resolveItemPresentation({
             type: result.type,
@@ -70,7 +70,10 @@ export async function storeItem(rawText: string, userId: string) {
                 text: result.text,
                 rawTranscript: rawText,
                 tags: [resolvedTag],
-                dueDate: result.dueDate ? new Date(result.dueDate) : null,
+                dueDate: result.dueDate
+                    ? (dueDateAllDay ? parseAllDayDate(result.dueDate) : new Date(result.dueDate))
+                    : null,
+                dueDateAllDay,
                 reminderAt: result.reminderAt ? new Date(result.reminderAt) : null,
             },
             include: { fromUser: { select: { name: true } } },
@@ -79,7 +82,8 @@ export async function storeItem(rawText: string, userId: string) {
         return {
             ...item,
             suggestedNewTag: normalizeSuggestedTag(result.suggestedNewTag, tagNames),
-            reminderNeedsTimeConfirmation: needsReminderTimeConfirmation,
+            needsDeadlineConfirmation: needsDeadlineConfirmation,
+            dueDateAllDay,
         };
     }));
 

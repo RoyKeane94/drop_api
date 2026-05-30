@@ -42,6 +42,7 @@ model ListItem {
   done          Boolean   @default(false)
   doneAt        DateTime?
   dueDate       DateTime?
+  dueDateAllDay Boolean   @default(false)
   reminderAt    DateTime?
   urgent        Boolean   @default(false)
   tags          String[]  @default([])
