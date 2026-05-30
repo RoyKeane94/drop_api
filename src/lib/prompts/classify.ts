@@ -80,6 +80,12 @@ Output: {"type":"TASK","text":"Pick up wine for Saturday dinner","routeTo":null,
 Input: "school trip permission slip needed by friday"
 Output: {"type":"TASK","text":"School trip permission slip needed by Friday","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Kids","suggestedNewTag":null,"unclear":false}
 
+Input: "buy sausages tomorrow"
+Output: {"type":"TASK","text":"Buy sausages","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false}
+
+Input: "remind me to call the dentist thursday morning"
+Output: {"type":"TASK","text":"Call the dentist","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDTHH:MM:00","tag":"Health","suggestedNewTag":null,"unclear":false}
+
 Input: "tell sarah the school run is swapped friday"
 Output: {"type":"FOR_PARTNER","text":"School run is swapped Friday","routeTo":"Sarah","dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Kids","suggestedNewTag":null,"unclear":false}
 
