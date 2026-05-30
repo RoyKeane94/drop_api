@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 
-const starterTags: Array<{ name: string; emoji: string }> = [
+export const starterTags: Array<{ name: string; emoji: string }> = [
     { name: 'Shop', emoji: '🛒' },
     { name: 'Kids', emoji: '👧' },
     { name: 'Home', emoji: '🏠' },
@@ -18,4 +18,12 @@ export async function seedHouseholdStarterTags(householdId: string) {
         data: starterTags.map((tag) => ({ householdId, ...tag })),
         skipDuplicates: true,
     });
+}
+
+export function emojiForTag(name: string | null | undefined): string | null {
+    if (!name?.trim()) return null;
+    const match = starterTags.find(
+        (tag) => tag.name.toLowerCase() === name.trim().toLowerCase(),
+    );
+    return match?.emoji ?? null;
 }
