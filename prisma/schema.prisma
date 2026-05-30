@@ -62,3 +62,14 @@ model HouseholdTag {
 
   @@unique([householdId, name])
 }
+
+model ClientErrorLog {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  area      String
+  message   String
+  status    Int?
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}

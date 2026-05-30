@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { signSessionToken } from '../lib/session';
 import { seedHouseholdStarterTags } from '../lib/tags';
 import { formatCode, generateInviteCode } from '../lib/inviteCode';
+import { respondWithLoggedError } from '../lib/errorLog';
 
 const authRouter = Router();
 
@@ -12,10 +13,30 @@ authRouter.post('/apple', async (req, res) => {
         const { identityToken, name } = req.body ?? {};
 
         if (!identityToken || typeof identityToken !== 'string') {
-            return res.status(400).json({ error: 'identityToken is required' });
+            return respondWithLoggedError(res, {
+                area: 'auth.apple',
+                message: 'identityToken is required',
+                status: 400,
+                userMessage: 'Something went wrong — please try again.',
+            });
         }
 
-        const { sub, email } = await verifyAppleToken(identityToken);
+        let sub: string;
+        let email: string | null;
+        try {
+            ({ sub, email } = await verifyAppleToken(identityToken));
+        } catch (error) {
+            console.error('Apple token verification failed:', error);
+            return respondWithLoggedError(res, {
+                area: 'auth.apple',
+                message: error instanceof Error ? error.message : 'Apple token verification failed',
+                status: 401,
+                userMessage: 'Something went wrong — please try again.',
+                metadata: {
+                    reason: 'apple_token_verification_failed',
+                },
+            });
+        }
 
         let user = await prisma.user.upsert({
             where: { id: sub },
@@ -30,8 +51,6 @@ authRouter.post('/apple', async (req, res) => {
             },
         });
 
-        // Every account owns a household from first sign-in.
-        // Partner can join later using this household code.
         if (!user.householdId) {
             const household = await createHouseholdWithCode();
             await seedHouseholdStarterTags(household.id);
@@ -63,7 +82,15 @@ authRouter.post('/apple', async (req, res) => {
         });
     } catch (error) {
         console.error('Apple auth failed:', error);
-        return res.status(401).json({ error: 'Invalid Apple identity token' });
+        return respondWithLoggedError(res, {
+            area: 'auth.apple',
+            message: error instanceof Error ? error.message : 'Apple auth failed',
+            status: 500,
+            userMessage: 'Something went wrong — please try again.',
+            metadata: {
+                reason: 'unexpected_auth_failure',
+            },
+        });
     }
 });
 
