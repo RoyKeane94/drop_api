@@ -43,6 +43,7 @@ model ListItem {
   doneAt        DateTime?
   dueDate       DateTime?
   reminderAt    DateTime?
+  urgent        Boolean   @default(false)
   tags          String[]  @default([])
   createdAt     DateTime  @default(now())
 

@@ -63,6 +63,31 @@ router.patch('/:id/done', async (req: any, res) => {
     res.json(item);
 });
 
+// PATCH /list/:id/urgent
+router.patch('/:id/urgent', async (req: any, res) => {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user?.householdId) return res.status(403).json({ error: 'No household' });
+
+    const existing = await prisma.listItem.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    if (existing.householdId !== user.householdId) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { urgent } = req.body as { urgent?: boolean };
+    if (typeof urgent !== 'boolean') {
+        return res.status(400).json({ error: 'urgent boolean required' });
+    }
+
+    const item = await prisma.listItem.update({
+        where: { id: req.params.id },
+        data: { urgent },
+        include: { fromUser: { select: { name: true } } },
+    });
+
+    res.json(item);
+});
+
 // PATCH /list/:id
 router.patch('/:id', async (req: any, res) => {
     const user = await prisma.user.findUnique({
