@@ -81,7 +81,9 @@ export async function storeItem(rawText: string, userId: string) {
                 dueDate: result.dueDate
                     ? (dueDateAllDay
                         ? parseAllDayDate(result.dueDate, userTimeZone)
-                        : parseReminderInstant(result.dueDate, userTimeZone))
+                        : result.reminderAt
+                            ? parseReminderInstant(result.reminderAt, userTimeZone)
+                            : parseReminderInstant(`${result.dueDate}T09:00:00`, userTimeZone))
                     : null,
                 dueDateAllDay,
                 reminderAt: result.reminderAt
