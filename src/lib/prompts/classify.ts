@@ -9,7 +9,7 @@ export function buildClassifyPrompt(
         ? assigneeNames.join(', ')
         : (partnerName ?? 'your partner');
     const partner = hasPartner
-        ? `Household assignees (app users only): ${assigneeList}.`
+        ? `Household partner(s) — app users only, match by first name: ${assigneeList}.`
         : `Solo household — no partner.`;
 
     const tagRule = tags.length > 0
@@ -21,13 +21,15 @@ export function buildClassifyPrompt(
         : `"TASK"|"NOTE"`;
 
     const partnerRules = hasPartner ? `
-6. FOR_PARTNER only when routeTo matches a household assignee (${assigneeList}). Allow minor spelling variants (e.g. Amelia for Emilia).
-7. Anyone else (children, friends — e.g. Jack) → TASK or NOTE; put their name in the task text, routeTo null. Never FOR_PARTNER for non-assignees.
+6. "tell/ask/remind [name] …" → FOR_PARTNER only if [name] matches a household partner (${assigneeList}). routeTo = their first name exactly as listed. Strip "tell [name]" from text.
+7. [name] not in (${assigneeList}) — children, friends, etc. → TASK or NOTE; prefix text with "Name:"; routeTo null. Never FOR_PARTNER.
 8. "we need to"/"both of us"/"don't forget we" → SHARED_TASK (action) or SHARED_NOTE (info).`
         : `6. Never use FOR_PARTNER, SHARED_TASK, or SHARED_NOTE.`;
 
-    const partnerExample = assigneeNames[0]
-        ? `\n"tell ${assigneeNames[0]} school run swapped friday" → {"type":"FOR_PARTNER","text":"School run swapped Friday","routeTo":"${assigneeNames[0]}","dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Kids","suggestedNewTag":null,"unclear":false}`
+    const partnerExamples = assigneeNames.length > 0
+        ? assigneeNames.map((name) =>
+            `\n"tell ${name} to buy soap" → {"type":"FOR_PARTNER","text":"Buy soap","routeTo":"${name}","dueDate":null,"reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false}`,
+        ).join('')
         : partnerName
             ? `\n"tell ${partnerName} school run swapped friday" → {"type":"FOR_PARTNER","text":"School run swapped Friday","routeTo":"${partnerName}","dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Kids","suggestedNewTag":null,"unclear":false}`
             : '';
@@ -54,6 +56,6 @@ Examples:
 "plumber sold be sending quote for radiator" → {"type":"NOTE","text":"Plumber should be sending quote for the radiator","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Home","suggestedNewTag":null,"unclear":false}
 "buy sausages tomorrow" → {"type":"TASK","text":"Buy sausages","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false}
 "remind me to call dentist thursday morning" → {"type":"TASK","text":"Call the dentist","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDT09:00:00","tag":"Health","suggestedNewTag":null,"unclear":false}
-"pick up milk and call dentist" → [{"type":"TASK","text":"Pick up milk","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Call dentist","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Health","suggestedNewTag":null,"unclear":false}]${partnerExample}${childExample}
+"pick up milk and call dentist" → [{"type":"TASK","text":"Pick up milk","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Call dentist","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Health","suggestedNewTag":null,"unclear":false}]${partnerExamples}${childExample}
 `.trim();
 }

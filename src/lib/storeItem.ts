@@ -3,6 +3,8 @@ import { classify, type ClassifyResult } from './classify';
 import { normalizeCaptureDates, parseAllDayDate } from './normalizeCaptureDates';
 import { seedHouseholdStarterTags } from './tags';
 import { resolveItemPresentation } from './resolveItemPresentation';
+import { applyHouseholdRouting, assigneeNamesFromMembers } from './resolvePartnerRoute';
+import { notifyPartnersAboutItems } from './pushNotifications';
 import { tryEditCapture } from './tryEditCapture';
 
 export async function storeItem(rawText: string, userId: string) {
@@ -34,13 +36,12 @@ export async function storeItem(rawText: string, userId: string) {
     const tagNames = householdTags.map((tag) => tag.name);
     const allUsers = user.household?.users ?? [];
     const otherUsers = allUsers.filter((member) => member.id !== userId);
-    const assigneeNames = otherUsers
-        .map((member) => member.name?.trim())
-        .filter((name): name is string => !!name);
+    const assigneeNames = assigneeNamesFromMembers(otherUsers);
     const hasPartner = otherUsers.length > 0;
     const partnerName = assigneeNames[0];
     const today = new Date().toISOString().split('T')[0];
-    const results = await classify(rawText, today, assigneeNames, partnerName, tagNames, hasPartner);
+    const classified = await classify(rawText, today, assigneeNames, partnerName, tagNames, hasPartner);
+    const results = applyHouseholdRouting(classified, rawText, otherUsers, hasPartner);
     const clearResults = results
         .filter((result) => !result.unclear && result.text.trim().length > 0)
         .map((result) => {
@@ -91,6 +92,21 @@ export async function storeItem(rawText: string, userId: string) {
             dueDateAllDay,
         };
     }));
+
+    void notifyPartnersAboutItems({
+        creatorUserId: userId,
+        creatorName: user.name,
+        householdUserIds: allUsers.map((member) => member.id),
+        items: createdItems.map((item) => ({
+            type: item.type,
+            text: item.text,
+            displayType: item.displayType,
+            ownerId: item.ownerId,
+            fromUserId: item.fromUserId,
+        })),
+    }).catch((error) => {
+        console.warn('Partner notification failed:', error);
+    });
 
     return {
         ...createdItems[0],

@@ -5,14 +5,23 @@ import { deleteAccountAndHousehold } from '../lib/householdCleanup';
 
 const router = Router();
 
-function userPayload(user: {
-    id: string;
-    householdId: string | null;
-    name: string | null;
-    email: string | null;
-    onboardingDone: boolean;
-    household: { inviteCode: string; subscriptionActive: boolean } | null;
-}) {
+function userPayload(
+    user: {
+        id: string;
+        householdId: string | null;
+        name: string | null;
+        email: string | null;
+        onboardingDone: boolean;
+        household: {
+            inviteCode: string;
+            subscriptionActive: boolean;
+            users?: Array<{ id: string; name: string | null }>;
+        } | null;
+    },
+    userId: string,
+) {
+    const partner = user.household?.users?.find((member) => member.id !== userId) ?? null;
+
     return {
         id: user.id,
         householdId: user.householdId,
@@ -21,26 +30,74 @@ function userPayload(user: {
         onboardingDone: user.onboardingDone,
         inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
         householdSubscriptionActive: user.household?.subscriptionActive ?? false,
+        partnerName: partner?.name ?? null,
     };
 }
+
+const householdInclude = {
+    select: {
+        inviteCode: true,
+        subscriptionActive: true,
+        users: { select: { id: true, name: true } },
+    },
+} as const;
 
 router.get('/me', async (req: any, res) => {
     const user = await prisma.user.findUnique({
         where: { id: req.userId },
-        include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
+        include: { household: householdInclude },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(userPayload(user));
+    res.json(userPayload(user, req.userId));
+});
+
+router.put('/me/push-token', async (req: any, res) => {
+    const { token } = req.body as { token?: string };
+    const trimmed = token?.trim();
+    if (!trimmed) return res.status(400).json({ error: 'Push token required' });
+
+    const user = await prisma.user.update({
+        where: { id: req.userId },
+        data: { pushToken: trimmed },
+        include: { household: householdInclude },
+    });
+    res.json(userPayload(user, req.userId));
+});
+
+router.delete('/me/push-token', async (req: any, res) => {
+    const user = await prisma.user.update({
+        where: { id: req.userId },
+        data: { pushToken: null },
+        include: { household: householdInclude },
+    });
+    res.json(userPayload(user, req.userId));
 });
 
 router.patch('/me', async (req: any, res) => {
-    const { onboardingDone } = req.body as { onboardingDone?: boolean };
+    const { onboardingDone, name } = req.body as { onboardingDone?: boolean; name?: string };
+    const data: { onboardingDone?: boolean; name?: string } = {};
+
+    if (typeof onboardingDone === 'boolean') {
+        data.onboardingDone = onboardingDone;
+    }
+
+    if (name !== undefined) {
+        const trimmed = typeof name === 'string' ? name.trim() : '';
+        if (!trimmed) return res.status(400).json({ error: 'Name required' });
+        if (trimmed.length > 40) return res.status(400).json({ error: 'Name is too long' });
+        data.name = trimmed;
+    }
+
+    if (Object.keys(data).length === 0) {
+        return res.status(400).json({ error: 'No updates provided' });
+    }
+
     const user = await prisma.user.update({
         where: { id: req.userId },
-        data: { onboardingDone },
-        include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
+        data,
+        include: { household: householdInclude },
     });
-    res.json(userPayload(user));
+    res.json(userPayload(user, req.userId));
 });
 
 router.delete('/me', async (req: any, res) => {

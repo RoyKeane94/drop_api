@@ -5,14 +5,23 @@ import { purgeHouseholdData } from '../lib/householdCleanup';
 
 const router = Router();
 
-function userPayload(user: {
-    id: string;
-    householdId: string | null;
-    name: string | null;
-    email: string | null;
-    onboardingDone: boolean;
-    household: { inviteCode: string; subscriptionActive: boolean } | null;
-}) {
+function userPayload(
+    user: {
+        id: string;
+        householdId: string | null;
+        name: string | null;
+        email: string | null;
+        onboardingDone: boolean;
+        household: {
+            inviteCode: string;
+            subscriptionActive: boolean;
+            users?: Array<{ id: string; name: string | null }>;
+        } | null;
+    },
+    userId: string,
+) {
+    const partner = user.household?.users?.find((member) => member.id !== userId) ?? null;
+
     return {
         id: user.id,
         householdId: user.householdId,
@@ -21,8 +30,17 @@ function userPayload(user: {
         onboardingDone: user.onboardingDone,
         inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
         householdSubscriptionActive: user.household?.subscriptionActive ?? false,
+        partnerName: partner?.name ?? null,
     };
 }
+
+const householdUserInclude = {
+    select: {
+        inviteCode: true,
+        subscriptionActive: true,
+        users: { select: { id: true, name: true } },
+    },
+} as const;
 
 router.get('/code', async (req: any, res) => {
     const user = await prisma.user.findUnique({
@@ -80,14 +98,14 @@ router.post('/join', async (req: any, res) => {
 
     const updatedUser = await prisma.user.findUnique({
         where: { id: req.userId },
-        include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
+        include: { household: householdUserInclude },
     });
 
     if (!updatedUser) {
         return res.status(404).json({ error: 'User not found.' });
     }
 
-    res.json({ user: userPayload(updatedUser) });
+    res.json({ user: userPayload(updatedUser, req.userId) });
 });
 
 router.post('/subscription/activate', async (req: any, res) => {

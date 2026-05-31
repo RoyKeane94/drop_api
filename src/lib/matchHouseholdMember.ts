@@ -43,6 +43,10 @@ function namesMatch(routeTo: string, memberName: string): boolean {
     const memberFirst = firstName(memberName);
     if (routeFirst && memberFirst && routeFirst === memberFirst) return true;
 
+    if (routeFirst.length >= 3 && memberFirst.length >= 3) {
+        if (memberFirst.startsWith(routeFirst) || routeFirst.startsWith(memberFirst)) return true;
+    }
+
     if (routeFirst.length >= 4 && memberFirst.length >= 4) {
         const distance = levenshtein(routeFirst, memberFirst);
         const limit = Math.max(2, Math.floor(Math.min(routeFirst.length, memberFirst.length) / 4));

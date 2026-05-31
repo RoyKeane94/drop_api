@@ -16,6 +16,7 @@
   "type": "commonjs",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.99.0",
+    "@parse/node-apn": "^7.1.0",
     "@prisma/client": "^6.19.3",
     "apple-signin-auth": "^2.0.0",
     "cors": "^2.8.6",
