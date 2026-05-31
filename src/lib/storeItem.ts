@@ -5,6 +5,7 @@ import { seedHouseholdStarterTags } from './tags';
 import { resolveItemPresentation } from './resolveItemPresentation';
 import { applyHouseholdRouting, assigneeNamesFromMembers } from './resolvePartnerRoute';
 import { notifyPartnersAboutItems } from './pushNotifications';
+import { parseReminderInstant, localDateStringInTimeZone } from './parseReminderInstant';
 import { tryEditCapture } from './tryEditCapture';
 
 export async function storeItem(rawText: string, userId: string) {
@@ -39,7 +40,8 @@ export async function storeItem(rawText: string, userId: string) {
     const assigneeNames = assigneeNamesFromMembers(otherUsers);
     const hasPartner = otherUsers.length > 0;
     const partnerName = assigneeNames[0];
-    const today = new Date().toISOString().split('T')[0];
+    const userTimeZone = user.timezone ?? undefined;
+    const today = localDateStringInTimeZone(userTimeZone);
     const classified = await classify(rawText, today, assigneeNames, partnerName, tagNames, hasPartner);
     const results = applyHouseholdRouting(classified, rawText, otherUsers, hasPartner);
     const clearResults = results
@@ -77,10 +79,14 @@ export async function storeItem(rawText: string, userId: string) {
                 rawTranscript: rawText,
                 tags: [resolvedTag],
                 dueDate: result.dueDate
-                    ? (dueDateAllDay ? parseAllDayDate(result.dueDate) : new Date(result.dueDate))
+                    ? (dueDateAllDay
+                        ? parseAllDayDate(result.dueDate, userTimeZone)
+                        : parseReminderInstant(result.dueDate, userTimeZone))
                     : null,
                 dueDateAllDay,
-                reminderAt: result.reminderAt ? new Date(result.reminderAt) : null,
+                reminderAt: result.reminderAt
+                    ? parseReminderInstant(result.reminderAt, userTimeZone)
+                    : null,
             },
             include: { fromUser: { select: { name: true } } },
         });

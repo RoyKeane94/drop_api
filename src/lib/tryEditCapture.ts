@@ -94,6 +94,7 @@ export async function tryEditCapture(rawText: string, userId: string) {
         partner: user.household?.users[0] ?? null,
         hasPartner,
         tagNames: user.household?.tags.map((tag) => tag.name) ?? [],
+        timeZone: user.timezone,
         updates: {
             text: parsed.text?.trim() || undefined,
             type: nextType,

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { formatCode } from '../lib/inviteCode';
 import { deleteAccountAndHousehold } from '../lib/householdCleanup';
+import { isValidTimeZone } from '../lib/parseReminderInstant';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ function userPayload(
         name: string | null;
         email: string | null;
         onboardingDone: boolean;
+        timezone?: string | null;
         household: {
             inviteCode: string;
             subscriptionActive: boolean;
@@ -28,6 +30,7 @@ function userPayload(
         name: user.name,
         email: user.email,
         onboardingDone: user.onboardingDone,
+        timezone: user.timezone,
         inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
         householdSubscriptionActive: user.household?.subscriptionActive ?? false,
         partnerName: partner?.name ?? null,
@@ -74,8 +77,12 @@ router.delete('/me/push-token', async (req: any, res) => {
 });
 
 router.patch('/me', async (req: any, res) => {
-    const { onboardingDone, name } = req.body as { onboardingDone?: boolean; name?: string };
-    const data: { onboardingDone?: boolean; name?: string } = {};
+    const { onboardingDone, name, timezone } = req.body as {
+        onboardingDone?: boolean;
+        name?: string;
+        timezone?: string;
+    };
+    const data: { onboardingDone?: boolean; name?: string; timezone?: string } = {};
 
     if (typeof onboardingDone === 'boolean') {
         data.onboardingDone = onboardingDone;
@@ -86,6 +93,14 @@ router.patch('/me', async (req: any, res) => {
         if (!trimmed) return res.status(400).json({ error: 'Name required' });
         if (trimmed.length > 40) return res.status(400).json({ error: 'Name is too long' });
         data.name = trimmed;
+    }
+
+    if (timezone !== undefined) {
+        const trimmed = typeof timezone === 'string' ? timezone.trim() : '';
+        if (!trimmed) return res.status(400).json({ error: 'Timezone required' });
+        if (trimmed.length > 64) return res.status(400).json({ error: 'Timezone is too long' });
+        if (!isValidTimeZone(trimmed)) return res.status(400).json({ error: 'Invalid timezone' });
+        data.timezone = trimmed;
     }
 
     if (Object.keys(data).length === 0) {

@@ -1,4 +1,5 @@
 import type { ClassifyResult } from './classify';
+import { parseReminderInstant } from './parseReminderInstant';
 
 const REMINDER_INTENT =
     /\b(remind(?:\s+me|\s+us|er)?|don't forget|do not forget|don't let me forget|do not let me forget|remember to|set (?:an? )?reminder|set (?:an? )?alert|alert me|nudge me)\b/i;
@@ -55,8 +56,8 @@ export function normalizeCaptureDates(rawText: string, result: ClassifyResult): 
     };
 }
 
-export function parseAllDayDate(dateOnly: string): Date {
-    return new Date(`${dateOnly}T12:00:00.000Z`);
+export function parseAllDayDate(dateOnly: string, timeZone?: string): Date {
+    return parseReminderInstant(`${dateOnly}T12:00:00`, timeZone);
 }
 
 function parseDateOnly(value: string | null | undefined): string | null {

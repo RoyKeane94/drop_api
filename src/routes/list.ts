@@ -130,6 +130,7 @@ router.patch('/:id', async (req: any, res) => {
             partner: user.household?.users[0] ?? null,
             hasPartner,
             tagNames: user.household?.tags.map((tag) => tag.name) ?? [],
+            timeZone: user.timezone,
             updates: {
                 text: nextText || undefined,
                 type: type as any,

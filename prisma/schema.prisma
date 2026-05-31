@@ -23,6 +23,7 @@ model User {
   name           String?
   email          String?
   pushToken      String?
+  timezone       String?
   onboardingDone Boolean   @default(false)
   createdAt      DateTime  @default(now())
 

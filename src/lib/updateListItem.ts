@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { parseAllDayDate } from './normalizeCaptureDates';
+import { parseIncomingDateTime } from './parseReminderInstant';
 import {
     isEditableItemType,
     normalizeTypeForHousehold,
@@ -13,6 +14,7 @@ export async function updateListItem(params: {
     householdId: string;
     partner?: { id: string; name: string | null } | null;
     hasPartner: boolean;
+    timeZone?: string | null;
     tagNames: string[];
     updates: {
         text?: string;
@@ -85,8 +87,8 @@ export async function updateListItem(params: {
         if (params.updates.dueDate) {
             const allDay = params.updates.dueDateAllDay ?? false;
             data.dueDate = allDay
-                ? parseAllDayDate(params.updates.dueDate.slice(0, 10))
-                : new Date(params.updates.dueDate);
+                ? parseAllDayDate(params.updates.dueDate.slice(0, 10), params.timeZone ?? undefined)
+                : parseIncomingDateTime(params.updates.dueDate, params.timeZone ?? undefined);
         } else {
             data.dueDate = null;
             data.dueDateAllDay = false;
@@ -98,7 +100,9 @@ export async function updateListItem(params: {
     }
 
     if (params.updates.reminderAt !== undefined) {
-        data.reminderAt = params.updates.reminderAt ? new Date(params.updates.reminderAt) : null;
+        data.reminderAt = params.updates.reminderAt
+            ? parseIncomingDateTime(params.updates.reminderAt, params.timeZone ?? undefined)
+            : null;
     }
 
     if (params.updates.tag !== undefined) {
