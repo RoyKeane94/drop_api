@@ -10,6 +10,7 @@ import captureRouter from './routes/captures';
 import householdRouter from './routes/household';
 import listRouter from './routes/list';
 import demoRouter from './routes/demo';
+import { logPushConfiguration } from './lib/pushNotifications';
 
 const app = express();
 
@@ -27,4 +28,5 @@ app.use('/household', householdRouter);
 app.use('/list', requireSubscription, listRouter);
 
 const PORT = process.env.PORT || 3001;
+logPushConfiguration();
 app.listen(PORT, () => console.log(`Drop API running on port ${PORT}`));
