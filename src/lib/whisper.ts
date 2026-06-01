@@ -27,6 +27,19 @@ export function isTranscriptionError(error: unknown): error is TranscriptionErro
 }
 
 const MIN_AUDIO_BYTES = 1500;
+const MIN_TRANSCRIPT_CHARS = 2;
+
+async function whisperTranscribe(buffer: Buffer, filename: string, mime: string): Promise<string> {
+    const file = await toFile(buffer, filename, { type: mime });
+    const result = await openai.audio.transcriptions.create({
+        model: 'whisper-1',
+        file,
+        language: 'en',
+        prompt: 'Spoken household tasks, reminders, shopping lists, and messages to family members.',
+        temperature: 0,
+    });
+    return result.text?.trim() ?? '';
+}
 
 export async function transcribe(buffer: Buffer): Promise<string> {
     if (!buffer || buffer.length == 0) {
@@ -43,22 +56,30 @@ export async function transcribe(buffer: Buffer): Promise<string> {
 
     try {
         const { buffer: audioBuffer, denoised } = await denoiseAudio(buffer);
-        const file = await toFile(
-            audioBuffer,
-            denoised ? 'capture.wav' : 'capture.m4a',
-            { type: denoised ? 'audio/wav' : 'audio/mp4' },
-        );
-        const result = await openai.audio.transcriptions.create({
-            model: 'whisper-1',
-            file,
-            language: 'en',
-        });
 
-        if (!result.text?.trim()) {
+        let transcript = '';
+        try {
+            transcript = await whisperTranscribe(
+                audioBuffer,
+                denoised ? 'capture.wav' : 'capture.m4a',
+                denoised ? 'audio/wav' : 'audio/mp4',
+            );
+        } catch (error: unknown) {
+            if (!denoised) throw error;
+            console.warn('Whisper failed on denoised audio, retrying original recording.');
+            transcript = await whisperTranscribe(buffer, 'capture.m4a', 'audio/mp4');
+        }
+
+        if (denoised && transcript.length < MIN_TRANSCRIPT_CHARS) {
+            console.warn('Denoised transcript too short, retrying original recording.');
+            transcript = await whisperTranscribe(buffer, 'capture.m4a', 'audio/mp4');
+        }
+
+        if (!transcript) {
             throw new TranscriptionError('NO_SPEECH', 422, "Couldn't hear anything — try again.");
         }
 
-        return result.text;
+        return transcript;
     } catch (error: unknown) {
         throw normalizeTranscriptionError(error);
     }

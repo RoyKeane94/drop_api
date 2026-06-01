@@ -27,24 +27,24 @@ def denoise(input_path: str, output_path: str) -> None:
         if data.ndim > 1:
             data = np.mean(data, axis=1)
 
-        # Trim leading silence so the noise profile isn't mostly silence.
+        # Use room tone before speech as the noise profile (not the speech itself).
         threshold = 0.01
-        speech_start = 0
+        speech_start = len(data)
         for i, sample in enumerate(data):
             if abs(sample) > threshold:
                 speech_start = i
                 break
 
-        noise_end = min(len(data), speech_start + int(rate * 0.4))
-        noise_clip = data[speech_start:noise_end]
-        if len(noise_clip) < int(rate * 0.05):
+        if speech_start > int(rate * 0.05):
+            noise_clip = data[:speech_start]
+        else:
             noise_clip = data[: int(rate * 0.3)]
 
         reduced = nr.reduce_noise(
             y=data,
             sr=rate,
             y_noise=noise_clip,
-            prop_decrease=0.75,
+            prop_decrease=0.55,
             stationary=True,
         )
 
