@@ -30,23 +30,39 @@ export async function updateListItem(params: {
         throw new Error('Item not found');
     }
 
-    if (!isEditableItemType(existing.type)) {
-        throw new Error('This item cannot be edited');
-    }
+    if (existing.type === 'FOR_PARTNER') {
+        const isParticipant = existing.ownerId === params.userId
+            || existing.fromUserId === params.userId;
+        if (!isParticipant) {
+            throw new Error('Forbidden');
+        }
 
-    const canEdit = existing.type === 'SHARED_TASK' || existing.type === 'SHARED_NOTE'
-        ? true
-        : existing.ownerId === params.userId;
+        const nextTextTrimmed = params.updates.text?.trim();
+        const changingContent = (nextTextTrimmed !== undefined && nextTextTrimmed !== existing.text)
+            || (params.updates.type !== undefined && params.updates.type !== existing.type)
+            || params.updates.tag !== undefined;
+        if (changingContent && existing.ownerId !== params.userId) {
+            throw new Error('Forbidden');
+        }
+    } else {
+        if (!isEditableItemType(existing.type)) {
+            throw new Error('This item cannot be edited');
+        }
 
-    if (!canEdit) {
-        throw new Error('Forbidden');
+        const canEdit = existing.type === 'SHARED_TASK' || existing.type === 'SHARED_NOTE'
+            ? true
+            : existing.ownerId === params.userId;
+
+        if (!canEdit) {
+            throw new Error('Forbidden');
+        }
     }
 
     const nextType = params.updates.type
         ? normalizeTypeForHousehold(params.updates.type, params.hasPartner)
         : (existing.type as ItemType);
 
-    if (!isEditableItemType(nextType)) {
+    if (!isEditableItemType(nextType) && nextType !== 'FOR_PARTNER') {
         throw new Error('Invalid item type');
     }
 
@@ -55,11 +71,15 @@ export async function updateListItem(params: {
     }
 
     const nextText = params.updates.text?.trim() || existing.text;
-    const presentation = resolveItemPresentation({
-        type: nextType,
-        userId: params.userId,
-        partner: params.partner,
-    });
+    const preservePartnerRouting = existing.type === 'FOR_PARTNER' && nextType === 'FOR_PARTNER';
+
+    const presentation = preservePartnerRouting
+        ? null
+        : resolveItemPresentation({
+            type: nextType,
+            userId: params.userId,
+            partner: params.partner,
+        });
 
     const data: {
         type: string;
@@ -71,17 +91,25 @@ export async function updateListItem(params: {
         dueDateAllDay?: boolean;
         reminderAt?: Date | null;
         tags?: string[];
-    } = {
-        type: nextType,
-        displayType: presentation.displayType,
-        text: nextText,
-        ownerId: nextType === 'SHARED_TASK' || nextType === 'SHARED_NOTE'
-            ? params.userId
-            : presentation.ownerId,
-        fromUserId: nextType === 'SHARED_TASK' || nextType === 'SHARED_NOTE'
-            ? null
-            : (presentation.fromUserId ?? null),
-    };
+    } = preservePartnerRouting
+        ? {
+            type: existing.type,
+            displayType: existing.displayType,
+            text: nextText,
+            ownerId: existing.ownerId,
+            fromUserId: existing.fromUserId,
+        }
+        : {
+            type: nextType,
+            displayType: presentation!.displayType,
+            text: nextText,
+            ownerId: nextType === 'SHARED_TASK' || nextType === 'SHARED_NOTE'
+                ? params.userId
+                : presentation!.ownerId,
+            fromUserId: nextType === 'SHARED_TASK' || nextType === 'SHARED_NOTE'
+                ? null
+                : (presentation!.fromUserId ?? null),
+        };
 
     if (params.updates.dueDate !== undefined) {
         if (params.updates.dueDate) {
