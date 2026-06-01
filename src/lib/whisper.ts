@@ -1,5 +1,6 @@
 import OpenAI, { toFile } from 'openai';
 import { File as NodeFile } from 'node:buffer';
+import { denoiseAudio } from './denoiseAudio.js';
 
 if (!(globalThis as { File?: unknown }).File) {
     (globalThis as { File?: unknown }).File = NodeFile;
@@ -41,7 +42,12 @@ export async function transcribe(buffer: Buffer): Promise<string> {
     }
 
     try {
-        const file = await toFile(buffer, 'capture.m4a', { type: 'audio/mp4' });
+        const { buffer: audioBuffer, denoised } = await denoiseAudio(buffer);
+        const file = await toFile(
+            audioBuffer,
+            denoised ? 'capture.wav' : 'capture.m4a',
+            { type: denoised ? 'audio/wav' : 'audio/mp4' },
+        );
         const result = await openai.audio.transcriptions.create({
             model: 'whisper-1',
             file,
