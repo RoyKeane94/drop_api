@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { seedHouseholdStarterTags } from '../lib/tags';
 import { isEditableItemType } from '../lib/resolveItemPresentation';
 import { updateListItem } from '../lib/updateListItem';
+import { deleteListItem } from '../lib/deleteListItem';
 import { listItemsVisibleToUser } from '../lib/listItemVisibility';
 
 const router = Router();
@@ -142,6 +143,26 @@ router.patch('/:id', async (req: any, res) => {
         res.json(item);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Update failed';
+        if (message === 'Item not found') return res.status(404).json({ error: message });
+        if (message === 'Forbidden') return res.status(403).json({ error: message });
+        return res.status(400).json({ error: message });
+    }
+});
+
+// DELETE /list/:id
+router.delete('/:id', async (req: any, res) => {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user?.householdId) return res.status(403).json({ error: 'No household' });
+
+    try {
+        await deleteListItem({
+            itemId: req.params.id,
+            userId: req.userId,
+            householdId: user.householdId,
+        });
+        res.json({ deleted: true });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Delete failed';
         if (message === 'Item not found') return res.status(404).json({ error: message });
         if (message === 'Forbidden') return res.status(403).json({ error: message });
         return res.status(400).json({ error: message });
