@@ -123,6 +123,85 @@ export async function storeItem(rawText: string, userId: string) {
     };
 }
 
+export async function storeImportedItem(
+    text: string,
+    type: 'TASK' | 'NOTE',
+    userId: string,
+) {
+    const trimmed = text.trim();
+    if (!trimmed) throw new Error('Text required');
+
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+            household: {
+                include: {
+                    users: true,
+                    tags: true,
+                },
+            },
+        },
+    });
+
+    if (!user?.householdId) throw new Error('User has no household');
+
+    let householdTags = user.household?.tags ?? [];
+    if (householdTags.length === 0) {
+        await seedHouseholdStarterTags(user.householdId);
+        householdTags = await prisma.householdTag.findMany({
+            where: { householdId: user.householdId },
+            orderBy: { name: 'asc' },
+        });
+    }
+    const tagNames = householdTags.map((tag) => tag.name);
+    const allUsers = user.household?.users ?? [];
+    const otherUsers = allUsers.filter((member) => member.id !== userId);
+    const partner = otherUsers[0];
+
+    const presentation = resolveItemPresentation({
+        type,
+        userId,
+        partner,
+        householdMembers: allUsers,
+    });
+
+    const item = await prisma.listItem.create({
+        data: {
+            householdId: user.householdId,
+            ownerId: presentation.ownerId,
+            fromUserId: presentation.fromUserId,
+            type: presentation.type,
+            displayType: presentation.displayType,
+            text: trimmed,
+            rawTranscript: trimmed,
+            tags: [resolveTagName(null, tagNames)],
+        },
+        include: { fromUser: { select: { name: true } } },
+    });
+
+    void notifyPartnersAboutItems({
+        creatorUserId: userId,
+        creatorName: user.name,
+        householdUserIds: allUsers.map((member) => member.id),
+        items: [{
+            type: item.type,
+            text: item.text,
+            displayType: item.displayType,
+            ownerId: item.ownerId,
+            fromUserId: item.fromUserId,
+        }],
+    }).catch((error) => {
+        console.warn('Partner notification failed:', error);
+    });
+
+    return {
+        ...item,
+        suggestedNewTag: null,
+        needsDeadlineConfirmation: false,
+        dueDateAllDay: false,
+    };
+}
+
 function normalizeSoloResult(result: ClassifyResult): ClassifyResult {
     switch (result.type) {
         case 'SHARED_TASK':
