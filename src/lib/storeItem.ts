@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { classify, type ClassifyResult } from './classify';
+import { classify, fallbackClassifyResult, type ClassifyResult } from './classify';
 import { normalizeCaptureDates, parseAllDayDate } from './normalizeCaptureDates';
 import { seedHouseholdStarterTags } from './tags';
 import { resolveItemPresentation } from './resolveItemPresentation';
@@ -7,8 +7,13 @@ import { applyHouseholdRouting, assigneeNamesFromMembers } from './resolvePartne
 import { notifyPartnersAboutItems } from './pushNotifications';
 import { parseReminderInstant, localDateStringInTimeZone } from './parseReminderInstant';
 import { tryEditCapture } from './tryEditCapture';
+import { splitMultiActionCapture } from './splitMultiActionCapture';
 
-export async function storeItem(rawText: string, userId: string) {
+export async function storeItem(
+    rawText: string,
+    userId: string,
+    options?: { isTypedCapture?: boolean },
+) {
     const edited = await tryEditCapture(rawText, userId);
     if (edited) return edited;
 
@@ -42,10 +47,41 @@ export async function storeItem(rawText: string, userId: string) {
     const partnerName = assigneeNames[0];
     const userTimeZone = user.timezone ?? undefined;
     const today = localDateStringInTimeZone(userTimeZone);
-    const classified = await classify(rawText, today, assigneeNames, partnerName, tagNames, hasPartner);
+    let classified: ClassifyResult[];
+    try {
+        classified = await classify(
+            rawText,
+            today,
+            assigneeNames,
+            partnerName,
+            tagNames,
+            hasPartner,
+            Boolean(options?.isTypedCapture),
+        );
+    } catch (error) {
+        if (!options?.isTypedCapture) throw error;
+        classified = [fallbackClassifyResult(rawText)];
+    }
+
+    if (options?.isTypedCapture && classified.length === 1) {
+        const splitTexts = splitMultiActionCapture(rawText);
+        if (splitTexts && splitTexts.length > 1) {
+            const template = classified[0];
+            classified = splitTexts.map((text) => ({
+                ...template,
+                text,
+                unclear: false,
+            }));
+        }
+    }
+
     const results = applyHouseholdRouting(classified, rawText, otherUsers, hasPartner);
-    const clearResults = results
-        .filter((result) => !result.unclear && result.text.trim().length > 0)
+    let clearResults = results
+        .filter((result) => {
+            if (!result.text.trim()) return false;
+            if (options?.isTypedCapture) return true;
+            return !result.unclear;
+        })
         .map((result) => {
             const normalized = normalizeCaptureDates(
                 rawText,
@@ -54,7 +90,16 @@ export async function storeItem(rawText: string, userId: string) {
             return normalized;
         });
     if (clearResults.length == 0) {
-        throw new Error("Couldn't quite catch that — try again.");
+        if (!options?.isTypedCapture) {
+            throw new Error("Couldn't quite catch that — try again.");
+        }
+        const fallback = fallbackClassifyResult(rawText);
+        clearResults = [
+            normalizeCaptureDates(
+                rawText,
+                hasPartner ? fallback : normalizeSoloResult(fallback),
+            ),
+        ];
     }
 
     const partner = otherUsers[0];

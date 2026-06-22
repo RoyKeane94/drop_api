@@ -163,7 +163,7 @@ router.post('/text', async (req: any, res) => {
         const { text } = req.body as { text?: string };
         if (!text?.trim()) return res.status(400).json({ error: 'Text required' });
 
-        const item = await storeItem(text, req.userId);
+        const item = await storeItem(text, req.userId, { isTypedCapture: true });
         res.json(item);
     } catch (err) {
         console.error('Text capture error:', err);

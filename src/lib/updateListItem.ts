@@ -36,14 +36,6 @@ export async function updateListItem(params: {
         if (!isParticipant) {
             throw new Error('Forbidden');
         }
-
-        const nextTextTrimmed = params.updates.text?.trim();
-        const changingContent = (nextTextTrimmed !== undefined && nextTextTrimmed !== existing.text)
-            || (params.updates.type !== undefined && params.updates.type !== existing.type)
-            || params.updates.tag !== undefined;
-        if (changingContent && existing.ownerId !== params.userId) {
-            throw new Error('Forbidden');
-        }
     } else {
         if (!isEditableItemType(existing.type)) {
             throw new Error('This item cannot be edited');
@@ -134,8 +126,8 @@ export async function updateListItem(params: {
     }
 
     if (params.updates.tag !== undefined) {
-        const trimmed = params.updates.tag?.trim();
-        data.tags = trimmed ? [trimmed] : existing.tags;
+        const resolved = resolveTagName(params.updates.tag, params.tagNames);
+        data.tags = [resolved];
     }
 
     const item = await prisma.listItem.update({
@@ -145,4 +137,18 @@ export async function updateListItem(params: {
     });
 
     return { ...item, wasEdit: true };
+}
+
+function resolveTagName(tag: string | null | undefined, existingTagNames: string[]): string {
+    const trimmed = tag?.trim();
+    if (trimmed) {
+        const match = existingTagNames.find(
+            (name) => name.toLowerCase() === trimmed.toLowerCase(),
+        );
+        if (match) return match;
+    }
+    const admin = existingTagNames.find((name) => name.toLowerCase() === 'admin');
+    if (admin) return admin;
+    if (existingTagNames[0]) return existingTagNames[0];
+    return 'Admin';
 }

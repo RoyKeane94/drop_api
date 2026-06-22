@@ -50,10 +50,12 @@ router.patch('/:id/done', async (req: any, res) => {
         return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const newDone = !existing.done;
+    const { done: requestedDone } = req.body as { done?: boolean };
+    const newDone = typeof requestedDone === 'boolean' ? requestedDone : !existing.done;
     const item = await prisma.listItem.update({
         where: { id: req.params.id },
         data: { done: newDone, doneAt: newDone ? new Date() : null },
+        include: { fromUser: { select: { name: true } } },
     });
 
     res.json(item);
@@ -105,21 +107,29 @@ router.patch('/:id', async (req: any, res) => {
         return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { text, type, reminderAt, dueDate, dueDateAllDay } = req.body as {
+    const { text, type, reminderAt, dueDate, dueDateAllDay, tag } = req.body as {
         text?: string;
         type?: string;
         reminderAt?: string | null;
         dueDate?: string | null;
         dueDateAllDay?: boolean;
+        tag?: string | null;
     };
     const nextText = text?.trim();
     const hasPartner = (user.household?.users.length ?? 0) > 0;
 
-    if (!nextText && !type && reminderAt === undefined && dueDate === undefined && dueDateAllDay === undefined) {
-        return res.status(400).json({ error: 'Text, type, dueDate, or reminderAt required' });
+    if (
+        !nextText
+        && !type
+        && tag === undefined
+        && reminderAt === undefined
+        && dueDate === undefined
+        && dueDateAllDay === undefined
+    ) {
+        return res.status(400).json({ error: 'Text, type, tag, dueDate, or reminderAt required' });
     }
 
-    if (type && !isEditableItemType(type)) {
+    if (type && !isEditableItemType(type) && type !== 'FOR_PARTNER') {
         return res.status(400).json({ error: 'Invalid item type' });
     }
 
@@ -135,6 +145,7 @@ router.patch('/:id', async (req: any, res) => {
             updates: {
                 text: nextText || undefined,
                 type: type as any,
+                tag: tag === undefined ? undefined : tag,
                 reminderAt: reminderAt === undefined ? undefined : reminderAt,
                 dueDate: dueDate === undefined ? undefined : dueDate,
                 dueDateAllDay: dueDateAllDay === undefined ? undefined : dueDateAllDay,

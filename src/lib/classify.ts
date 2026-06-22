@@ -29,7 +29,7 @@ function parseClassifyJson(raw: string): Partial<ClassifyResult> | Partial<Class
     }
 }
 
-function fallbackClassifyResult(rawText: string): ClassifyResult {
+export function fallbackClassifyResult(rawText: string): ClassifyResult {
     const text = rawText.trim();
     const firstWord = text.split(/\s+/)[0]?.toLowerCase() ?? '';
     const taskVerbs = new Set([
@@ -61,7 +61,7 @@ function normalizeClassifyItems(
 ): ClassifyResult[] {
     const rawItems = Array.isArray(parsed) ? parsed : [parsed];
 
-    return rawItems.slice(0, 3).map((item) => ({
+    return rawItems.slice(0, 4).map((item) => ({
         type: (item.type ?? 'NOTE') as ClassifyResult['type'],
         text: (item.text ?? rawText.trim()).trim(),
         routeTo: item.routeTo ?? null,
@@ -80,6 +80,7 @@ export async function classify(
     partnerName?: string,
     tags: string[] = [],
     hasPartner = true,
+    throwOnParseFailure = false,
 ): Promise<ClassifyResult[]> {
     const trimmed = rawText.trim();
     if (!trimmed) {
@@ -88,18 +89,24 @@ export async function classify(
 
     const msg = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 256,
+        max_tokens: 384,
         system: buildClassifyPrompt(today, assigneeNames, partnerName, tags, hasPartner),
         messages: [{ role: 'user', content: trimmed }],
     });
 
     const rawBlock = msg.content.find((block) => block.type === 'text');
     if (!rawBlock || rawBlock.type !== 'text') {
+        if (throwOnParseFailure) {
+            throw new Error('Classifier returned no text');
+        }
         return [fallbackClassifyResult(trimmed)];
     }
 
     const parsed = parseClassifyJson(rawBlock.text);
     if (!parsed) {
+        if (throwOnParseFailure) {
+            throw new Error('Classifier returned non-JSON');
+        }
         console.warn('Classifier returned non-JSON, using transcript fallback:', rawBlock.text.slice(0, 80));
         return [fallbackClassifyResult(trimmed)];
     }

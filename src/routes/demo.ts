@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { classify, type ClassifyResult } from '../lib/classify';
+import { classify, fallbackClassifyResult, type ClassifyResult } from '../lib/classify';
 import multer from 'multer';
 import { isTranscriptionError, transcribe } from '../lib/whisper';
 import { emojiForTag, starterTags } from '../lib/tags';
@@ -60,13 +60,16 @@ router.post('/capture', async (req, res) => {
 
     try {
         const today = new Date().toISOString().split('T')[0];
-        const [result] = await classify(text, today, [], undefined, starterTagNames, false);
-        if (!result || result.unclear) {
-            return res.status(422).json({ error: "Couldn't quite catch that — try again." });
-        }
+        const results = await classify(text, today, [], undefined, starterTagNames, false, true);
+        const usable = results.filter((result) => result.text.trim().length > 0);
+        const result = usable[0] ?? fallbackClassifyResult(text);
         res.json(formatDemoResult(result));
     } catch {
-        res.status(500).json({ error: 'Classification failed' });
+        try {
+            res.json(formatDemoResult(fallbackClassifyResult(text)));
+        } catch {
+            res.status(500).json({ error: 'Classification failed' });
+        }
     }
 });
 
