@@ -1,3 +1,5 @@
+export const MAX_ITEMS_PER_CAPTURE = 10;
+
 export function buildClassifyPrompt(
     today: string,
     assigneeNames: string[] = [],
@@ -43,7 +45,7 @@ Classify household captures for Drop. Today: ${today}. ${partner}
 2. Starts with verb → TASK. Otherwise → NOTE.
 3. ${tagRule}
 4. dueDate (YYYY-MM-DD): any date or deadline mentioned. reminderAt (YYYY-MM-DDTHH:MM:00): ONLY when user says "remind me", "don't forget", or "set an alert". No reminder language → reminderAt null. No time given → 09:00. Morning=09:00 Afternoon=14:00 Evening=18:00. Resolve relative dates from ${today}.
-5. Two or more distinct actions in one message (comma-separated, or joined with "and") → JSON array, one object per action, max 4. Never leave multiple actions in one text field.
+5. SPLITTING (mandatory): Read the message and identify every distinct action, errand, or to-do — however it is phrased (spoken, typed, comma-separated, or run-on). Return a JSON array with one object per action; never bundle multiple actions in one text field. Use meaning, not punctuation — "pick up milk call dentist" and "pick up milk, call dentist" are both two tasks. Keep genuinely single actions whole (e.g. "write thank you to Mike and Sue" is one task). Up to ${MAX_ITEMS_PER_CAPTURE} items; if there are more, include the first ${MAX_ITEMS_PER_CAPTURE} only.
 6. Unreadable → unclear: true.
 ${partnerRules}
 
@@ -57,6 +59,6 @@ Examples:
 "buy sausages tomorrow" → {"type":"TASK","text":"Buy sausages","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false}
 "remind me to call dentist thursday morning" → {"type":"TASK","text":"Call the dentist","routeTo":null,"dueDate":"YYYY-MM-DD","reminderAt":"YYYY-MM-DDT09:00:00","tag":"Health","suggestedNewTag":null,"unclear":false}
 "pick up milk and call dentist" → [{"type":"TASK","text":"Pick up milk","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Call dentist","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Health","suggestedNewTag":null,"unclear":false}]
-"run to the shops for chocolate, book car wash and write thank you to mike and sue and book dentist" → [{"type":"TASK","text":"Run to the shops for chocolate","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Book car wash","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Admin","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Write thank you to Mike and Sue","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Admin","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Book dentist","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Health","suggestedNewTag":null,"unclear":false}]${partnerExamples}${childExample}
+"erm need to run to the shops for chocolate book the car wash write a thank you to mike and sue and book the dentist" → [{"type":"TASK","text":"Run to the shops for chocolate","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Shop","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Book the car wash","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Admin","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Write a thank you to Mike and Sue","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Admin","suggestedNewTag":null,"unclear":false},{"type":"TASK","text":"Book the dentist","routeTo":null,"dueDate":null,"reminderAt":null,"tag":"Health","suggestedNewTag":null,"unclear":false}]${partnerExamples}${childExample}
 `.trim();
 }

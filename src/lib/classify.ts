@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { buildClassifyPrompt } from './prompts/classify';
+import { buildClassifyPrompt, MAX_ITEMS_PER_CAPTURE } from './prompts/classify';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -61,7 +61,7 @@ function normalizeClassifyItems(
 ): ClassifyResult[] {
     const rawItems = Array.isArray(parsed) ? parsed : [parsed];
 
-    return rawItems.slice(0, 4).map((item) => ({
+    return rawItems.slice(0, MAX_ITEMS_PER_CAPTURE).map((item) => ({
         type: (item.type ?? 'NOTE') as ClassifyResult['type'],
         text: (item.text ?? rawText.trim()).trim(),
         routeTo: item.routeTo ?? null,
@@ -89,7 +89,7 @@ export async function classify(
 
     const msg = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 384,
+        max_tokens: 1024,
         system: buildClassifyPrompt(today, assigneeNames, partnerName, tags, hasPartner),
         messages: [{ role: 'user', content: trimmed }],
     });

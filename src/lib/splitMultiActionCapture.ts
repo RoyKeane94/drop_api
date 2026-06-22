@@ -1,3 +1,5 @@
+import { MAX_ITEMS_PER_CAPTURE } from './prompts/classify';
+
 const TASK_VERBS = new Set([
     'buy', 'call', 'pick', 'get', 'send', 'pay', 'book', 'order', 'collect', 'take',
     'do', 'make', 'fix', 'clean', 'wash', 'remind', 'check', 'email', 'text', 'message',
@@ -54,7 +56,7 @@ function splitOnAndBeforeVerbs(text: string): string[] {
  * Splits on commas and on "and" only when the next clause starts with a task verb
  * (so "Mike and Sue" stays intact).
  */
-export function splitMultiActionCapture(text: string, maxItems = 4): string[] | null {
+export function splitMultiActionCapture(text: string, maxItems = MAX_ITEMS_PER_CAPTURE): string[] | null {
     const trimmed = text.trim();
     if (!trimmed) return null;
 
