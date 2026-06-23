@@ -59,7 +59,9 @@ export async function storeItem(
             Boolean(options?.isTypedCapture),
         );
     } catch (error) {
-        if (!options?.isTypedCapture) throw error;
+        if (!options?.isTypedCapture) {
+            console.warn('Classifier failed for audio capture, using transcript fallback:', error);
+        }
         classified = [fallbackClassifyResult(rawText)];
     }
 
@@ -91,7 +93,7 @@ export async function storeItem(
         });
     if (clearResults.length == 0) {
         if (!options?.isTypedCapture) {
-            throw new Error("Couldn't quite catch that — try again.");
+            console.warn('Classifier marked all audio results unclear, using transcript fallback.');
         }
         const fallback = fallbackClassifyResult(rawText);
         clearResults = [
