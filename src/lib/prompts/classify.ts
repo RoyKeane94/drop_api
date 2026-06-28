@@ -42,7 +42,7 @@ export function buildClassifyPrompt(
 Classify household captures for Drop. Today: ${today}. ${partner}
 
 1. Remove fillers (um, erm, uh, so, yeah, right, ok). Fix spelling and grammar using context ("sold be"→"should be"). British English. Keep all detail.
-2. Starts with verb → TASK. Otherwise → NOTE.
+2. ACTION RULE (highest priority): if any household user is expected to do something, it must be TASK/SHARED_TASK/FOR_PARTNER (never NOTE/SHARED_NOTE). Use NOTE/SHARED_NOTE only for information with no user action. Verb-starting phrases are usually TASK.
 3. ${tagRule}
 4. dueDate (YYYY-MM-DD): any date or deadline mentioned. reminderAt (YYYY-MM-DDTHH:MM:00): ONLY when user says "remind me", "don't forget", or "set an alert". No reminder language → reminderAt null. No time given → 09:00. Morning=09:00 Afternoon=14:00 Evening=18:00. Resolve relative dates from ${today}.
 5. SPLITTING (mandatory): Read the message and identify every distinct action, errand, or to-do — however it is phrased (spoken, typed, comma-separated, or run-on). Return a JSON array with one object per action; never bundle multiple actions in one text field. Use meaning, not punctuation — "pick up milk call dentist" and "pick up milk, call dentist" are both two tasks. Keep genuinely single actions whole (e.g. "write thank you to Mike and Sue" is one task). Up to ${MAX_ITEMS_PER_CAPTURE} items; if there are more, include the first ${MAX_ITEMS_PER_CAPTURE} only.
