@@ -71,3 +71,24 @@ export async function denoiseAudio(buffer: Buffer): Promise<{ buffer: Buffer; de
         await fs.unlink(outputPath).catch(() => {});
     }
 }
+
+export async function denoiseAudioFile(inputPath: string): Promise<{ path: string; denoised: boolean }> {
+    if (!denoiseEnabled()) {
+        return { path: inputPath, denoised: false };
+    }
+
+    const python = process.env.PYTHON_PATH || 'python3';
+    const script = scriptPath();
+    const id = randomUUID();
+    const outputPath = path.join(os.tmpdir(), `drop-out-${id}.wav`);
+
+    try {
+        await runPython(python, script, inputPath, outputPath);
+        return { path: outputPath, denoised: true };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn('Audio denoise skipped, using original recording:', message);
+        await fs.unlink(outputPath).catch(() => {});
+        return { path: inputPath, denoised: false };
+    }
+}

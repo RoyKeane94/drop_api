@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { classify, fallbackClassifyResult, type ClassifyResult } from '../lib/classify';
 import multer from 'multer';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { randomUUID } from 'crypto';
 import { isTranscriptionError, transcribe } from '../lib/whisper';
 import { emojiForTag, starterTags } from '../lib/tags';
 
@@ -74,10 +78,13 @@ router.post('/capture', async (req, res) => {
 });
 
 router.post('/audio', upload.single('audio'), async (req, res) => {
+    let audioPath: string | null = null;
     try {
         if (!req.file?.buffer) return res.status(400).json({ error: 'audio required' });
 
-        const transcript = await transcribe(req.file.buffer as Buffer);
+        audioPath = path.join(os.tmpdir(), `drop-demo-${randomUUID()}.m4a`);
+        await fs.writeFile(audioPath, req.file.buffer as Buffer);
+        const transcript = await transcribe(audioPath);
         if (!transcript.trim()) {
             return res.status(422).json({ error: 'No speech detected' });
         }
@@ -96,6 +103,10 @@ router.post('/audio', upload.single('audio'), async (req, res) => {
             return res.status(error.status).json({ error: error.userMessage });
         }
         res.status(500).json({ error: 'Audio processing failed' });
+    } finally {
+        if (audioPath) {
+            await fs.unlink(audioPath).catch(() => {});
+        }
     }
 });
 

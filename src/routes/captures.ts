@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { randomUUID } from 'crypto';
 import { isTranscriptionError, transcribe } from '../lib/whisper';
 import { storeItem, storeImportedItem } from '../lib/storeItem';
 import { respondWithLoggedError } from '../lib/errorLog';
@@ -10,6 +14,18 @@ import {
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const audioUpload = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+        filename: (_req, file, cb) => {
+            const ext = path.extname(file.originalname || '').toLowerCase() || '.m4a';
+            cb(null, `drop-capture-${randomUUID()}${ext}`);
+        },
+    }),
+    limits: {
+        fileSize: 10 * 1024 * 1024,
+    },
+});
 
 const USER_FACING_CAPTURE_ERRORS = [
     "Couldn't quite catch that",
@@ -22,16 +38,16 @@ function isUserFacingCaptureError(message: string): boolean {
 }
 
 // POST /captures/audio
-router.post('/audio', upload.single('audio'), async (req: any, res) => {
-    const audioBytes = req.file?.buffer?.length ?? 0;
+router.post('/audio', audioUpload.single('audio'), async (req: any, res) => {
+    const audioPath = req.file?.path as string | undefined;
+    const audioBytes = req.file?.size ?? 0;
 
     try {
-        if (!req.file?.buffer) {
+        if (!audioPath) {
             return res.status(400).json({ error: 'Audio file required' });
         }
 
-        const buffer = req.file.buffer as Buffer;
-        const transcript = await transcribe(buffer);
+        const transcript = await transcribe(audioPath);
         const item = await storeItem(transcript, req.userId);
 
         res.json(item);
@@ -72,6 +88,10 @@ router.post('/audio', upload.single('audio'), async (req: any, res) => {
             userId: req.userId,
             metadata: { audioBytes },
         });
+    } finally {
+        if (audioPath) {
+            await fs.unlink(audioPath).catch(() => {});
+        }
     }
 });
 

@@ -1,6 +1,8 @@
-import OpenAI, { toFile } from 'openai';
+import OpenAI from 'openai';
 import { File as NodeFile } from 'node:buffer';
-import { denoiseAudio } from './denoiseAudio.js';
+import fs from 'fs';
+import fsPromises from 'fs/promises';
+import { denoiseAudioFile } from './denoiseAudio.js';
 
 if (!(globalThis as { File?: unknown }).File) {
     (globalThis as { File?: unknown }).File = NodeFile;
@@ -29,8 +31,8 @@ export function isTranscriptionError(error: unknown): error is TranscriptionErro
 const MIN_AUDIO_BYTES = 1500;
 const MIN_TRANSCRIPT_CHARS = 2;
 
-async function whisperTranscribe(buffer: Buffer, filename: string, mime: string): Promise<string> {
-    const file = await toFile(buffer, filename, { type: mime });
+async function whisperTranscribe(filePath: string): Promise<string> {
+    const file = fs.createReadStream(filePath);
     const result = await openai.audio.transcriptions.create({
         model: 'whisper-1',
         file,
@@ -41,12 +43,13 @@ async function whisperTranscribe(buffer: Buffer, filename: string, mime: string)
     return result.text?.trim() ?? '';
 }
 
-export async function transcribe(buffer: Buffer): Promise<string> {
-    if (!buffer || buffer.length == 0) {
+export async function transcribe(audioPath: string): Promise<string> {
+    const stat = await fsPromises.stat(audioPath).catch(() => null);
+    if (!stat || stat.size == 0) {
         throw new TranscriptionError('NO_AUDIO', 400, 'Audio file required.');
     }
 
-    if (buffer.length < MIN_AUDIO_BYTES) {
+    if (stat.size < MIN_AUDIO_BYTES) {
         throw new TranscriptionError(
             'NO_SPEECH',
             422,
@@ -54,25 +57,25 @@ export async function transcribe(buffer: Buffer): Promise<string> {
         );
     }
 
+    let denoisedPath: string | null = null;
     try {
-        const { buffer: audioBuffer, denoised } = await denoiseAudio(buffer);
+        const { path: preparedPath, denoised } = await denoiseAudioFile(audioPath);
+        if (denoised && preparedPath !== audioPath) {
+            denoisedPath = preparedPath;
+        }
 
         let transcript = '';
         try {
-            transcript = await whisperTranscribe(
-                audioBuffer,
-                denoised ? 'capture.wav' : 'capture.m4a',
-                denoised ? 'audio/wav' : 'audio/mp4',
-            );
+            transcript = await whisperTranscribe(preparedPath);
         } catch (error: unknown) {
             if (!denoised) throw error;
             console.warn('Whisper failed on denoised audio, retrying original recording.');
-            transcript = await whisperTranscribe(buffer, 'capture.m4a', 'audio/mp4');
+            transcript = await whisperTranscribe(audioPath);
         }
 
         if (denoised && transcript.length < MIN_TRANSCRIPT_CHARS) {
             console.warn('Denoised transcript too short, retrying original recording.');
-            transcript = await whisperTranscribe(buffer, 'capture.m4a', 'audio/mp4');
+            transcript = await whisperTranscribe(audioPath);
         }
 
         if (!transcript) {
@@ -82,6 +85,10 @@ export async function transcribe(buffer: Buffer): Promise<string> {
         return transcript;
     } catch (error: unknown) {
         throw normalizeTranscriptionError(error);
+    } finally {
+        if (denoisedPath) {
+            await fsPromises.unlink(denoisedPath).catch(() => {});
+        }
     }
 }
 
