@@ -26,11 +26,18 @@ export function normalizeCaptureDates(rawText: string, result: ClassifyResult): 
     const reminderRequested =
         hasReminderIntent(rawText) || hasReminderIntent(result.text);
     const explicitTime = hasExplicitTime(rawText) || hasExplicitTime(result.text);
+    const extractedTime =
+        extractExplicitTime(rawText) ?? extractExplicitTime(result.text);
 
     let dueDate = parseDateOnly(result.dueDate);
     let reminderAt = parseDateTime(result.reminderAt);
 
-    if (!reminderRequested) {
+    // Preserve explicit times (e.g. "Thursday at 12:30") even when reminder language is absent.
+    if (dueDate && extractedTime && (!reminderAt || isDefaultReminderTime(reminderAt))) {
+        reminderAt = `${dueDate}T${extractedTime}`;
+    }
+
+    if (!reminderRequested && !extractedTime) {
         reminderAt = null;
     } else if (dueDate && !reminderAt) {
         reminderAt = `${dueDate}T09:00:00`;
@@ -91,4 +98,57 @@ function ensureReminderTime(reminderAt: string, dueDate: string | null): string 
         return `${datePart}T09:00:00`;
     }
     return `${datePart}T${hour}:${minute}:${second}`;
+}
+
+function isDefaultReminderTime(reminderAt: string): boolean {
+    return /T09:00:00$/.test(reminderAt);
+}
+
+function extractExplicitTime(text: string): string | null {
+    const normalized = text
+        .toLowerCase()
+        .replace(/\ba\.m\.\b/g, 'am')
+        .replace(/\bp\.m\.\b/g, 'pm');
+
+    const hhmmMeridiem = normalized.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)\b/i);
+    if (hhmmMeridiem) {
+        const hour24 = to24Hour(Number(hhmmMeridiem[1]), hhmmMeridiem[3]);
+        const minute = clamp(Number(hhmmMeridiem[2]), 0, 59);
+        return `${pad2(hour24)}:${pad2(minute)}:00`;
+    }
+
+    const hMeridiem = normalized.match(/\b(?:at\s+)?(\d{1,2})\s*(am|pm)\b/i);
+    if (hMeridiem) {
+        const hour24 = to24Hour(Number(hMeridiem[1]), hMeridiem[2]);
+        return `${pad2(hour24)}:00:00`;
+    }
+
+    const hhmm24 = normalized.match(/\b(?:at\s+)?([01]?\d|2[0-3]):([0-5]\d)\b/);
+    if (hhmm24) {
+        return `${pad2(Number(hhmm24[1]))}:${pad2(Number(hhmm24[2]))}:00`;
+    }
+
+    if (/\bnoon\b/i.test(normalized)) return '12:00:00';
+    if (/\bmidnight\b/i.test(normalized)) return '00:00:00';
+    if (/\bmorning\b/i.test(normalized)) return '09:00:00';
+    if (/\bafternoon\b/i.test(normalized)) return '14:00:00';
+    if (/\bevening\b/i.test(normalized)) return '18:00:00';
+
+    return null;
+}
+
+function to24Hour(hour: number, meridiem: string): number {
+    const safeHour = clamp(hour, 1, 12);
+    if (meridiem.toLowerCase() === 'am') {
+        return safeHour === 12 ? 0 : safeHour;
+    }
+    return safeHour === 12 ? 12 : safeHour + 12;
+}
+
+function pad2(value: number): string {
+    return String(value).padStart(2, '0');
+}
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
 }
