@@ -55,9 +55,17 @@ export function normalizeCaptureDates(rawText: string, result: ClassifyResult): 
     }
 
     const dueDateAllDay = !!dueDate && !explicitTime;
+    const cleanedText = shouldStripTemporalText(result.type)
+        ? stripTemporalPhrases(result.text)
+        : result.text.trim();
 
     return {
-        result: { ...result, dueDate, reminderAt },
+        result: {
+            ...result,
+            text: cleanedText || result.text.trim(),
+            dueDate,
+            reminderAt,
+        },
         needsDeadlineConfirmation: true,
         dueDateAllDay,
     };
@@ -151,4 +159,37 @@ function pad2(value: number): string {
 
 function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
+}
+
+function shouldStripTemporalText(type: ClassifyResult['type']): boolean {
+    return type === 'TASK' || type === 'SHARED_TASK' || type === 'FOR_PARTNER';
+}
+
+function stripTemporalPhrases(text: string): string {
+    const dayNames = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
+    const monthNames = 'january|february|march|april|may|june|july|august|september|october|november|december';
+
+    const patterns = [
+        new RegExp(`\\b(?:on\\s+)?(?:${dayNames})\\b`, 'gi'),
+        /\b(?:today|tomorrow|tonight)\b/gi,
+        /\b(?:this|next)\s+(?:morning|afternoon|evening|tonight|week|month)\b/gi,
+        /\b(?:in\s+\d+\s+(?:minutes?|hours?|days?))\b/gi,
+        /\b(?:at|by|around)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?\b/gi,
+        /\b\d{1,2}(?::\d{2})\s*(?:am|pm|a\.m\.|p\.m\.)?\b/gi,
+        new RegExp(`\\b(?:on\\s+)?\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${monthNames})\\b`, 'gi'),
+        new RegExp(`\\b(?:on\\s+)?(?:${monthNames})\\s+\\d{1,2}(?:st|nd|rd|th)?\\b`, 'gi'),
+    ];
+
+    let cleaned = text.trim();
+    for (const pattern of patterns) {
+        cleaned = cleaned.replace(pattern, ' ');
+    }
+
+    cleaned = cleaned
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+([,.;!?])/g, '$1')
+        .replace(/\b(?:on|at|by|around)\s*$/i, '')
+        .trim();
+
+    return cleaned;
 }
