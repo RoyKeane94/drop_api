@@ -44,7 +44,8 @@ def denoise(input_path: str, output_path: str) -> None:
             y=data,
             sr=rate,
             y_noise=noise_clip,
-            prop_decrease=0.55,
+            # Less aggressive reduction keeps speech timbre and consonants clearer for ASR.
+            prop_decrease=0.4,
             stationary=True,
         )
 

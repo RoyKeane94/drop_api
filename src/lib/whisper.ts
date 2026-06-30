@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { File as NodeFile } from 'node:buffer';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
@@ -32,15 +32,32 @@ const MIN_AUDIO_BYTES = 1500;
 const MIN_TRANSCRIPT_CHARS = 2;
 
 async function whisperTranscribe(filePath: string): Promise<string> {
-    const file = fs.createReadStream(filePath);
-    const result = await openai.audio.transcriptions.create({
-        model: 'whisper-1',
-        file,
-        language: 'en',
-        prompt: 'Spoken household tasks, reminders, shopping lists, and messages to family members.',
-        temperature: 0,
-    });
-    return result.text?.trim() ?? '';
+    try {
+        const file = fs.createReadStream(filePath);
+        const result = await openai.audio.transcriptions.create({
+            model: 'whisper-1',
+            file,
+            language: 'en',
+            prompt: 'Spoken household tasks, reminders, shopping lists, and messages to family members.',
+            temperature: 0,
+        });
+        return result.text?.trim() ?? '';
+    } catch (streamError) {
+        // Reliability fallback: if stream uploads fail in a specific runtime, retry via in-memory file.
+        const buffer = await fsPromises.readFile(filePath).catch(() => null);
+        if (!buffer) throw streamError;
+
+        const ext = filePath.toLowerCase().endsWith('.wav') ? 'audio/wav' : 'audio/mp4';
+        const upload = await toFile(buffer, filePath.split('/').pop() || 'capture.m4a', { type: ext });
+        const result = await openai.audio.transcriptions.create({
+            model: 'whisper-1',
+            file: upload,
+            language: 'en',
+            prompt: 'Spoken household tasks, reminders, shopping lists, and messages to family members.',
+            temperature: 0,
+        });
+        return result.text?.trim() ?? '';
+    }
 }
 
 export async function transcribe(audioPath: string): Promise<string> {
@@ -64,19 +81,9 @@ export async function transcribe(audioPath: string): Promise<string> {
             denoisedPath = preparedPath;
         }
 
-        let transcript = '';
-        try {
-            transcript = await whisperTranscribe(preparedPath);
-        } catch (error: unknown) {
-            if (!denoised) throw error;
-            console.warn('Whisper failed on denoised audio, retrying original recording.');
-            transcript = await whisperTranscribe(audioPath);
-        }
-
-        if (denoised && transcript.length < MIN_TRANSCRIPT_CHARS) {
-            console.warn('Denoised transcript too short, retrying original recording.');
-            transcript = await whisperTranscribe(audioPath);
-        }
+        const transcript = denoised
+            ? await bestTranscriptFromBoth(preparedPath, audioPath)
+            : await whisperTranscribe(preparedPath);
 
         if (!transcript) {
             throw new TranscriptionError('NO_SPEECH', 422, "Couldn't hear anything — try again.");
@@ -90,6 +97,56 @@ export async function transcribe(audioPath: string): Promise<string> {
             await fsPromises.unlink(denoisedPath).catch(() => {});
         }
     }
+}
+
+async function bestTranscriptFromBoth(denoisedPath: string, originalPath: string): Promise<string> {
+    const [denoisedResult, originalResult] = await Promise.allSettled([
+        whisperTranscribe(denoisedPath),
+        whisperTranscribe(originalPath),
+    ]);
+
+    const denoisedText = denoisedResult.status === 'fulfilled' ? denoisedResult.value : '';
+    const originalText = originalResult.status === 'fulfilled' ? originalResult.value : '';
+
+    if (!denoisedText && !originalText) {
+        const denoisedError = denoisedResult.status === 'rejected' ? denoisedResult.reason : null;
+        const originalError = originalResult.status === 'rejected' ? originalResult.reason : null;
+        throw originalError ?? denoisedError ?? new Error('Whisper transcription failed');
+    }
+
+    if (!denoisedText) return originalText;
+    if (!originalText) return denoisedText;
+
+    const denoisedScore = transcriptionQualityScore(denoisedText);
+    const originalScore = transcriptionQualityScore(originalText);
+    return originalScore >= denoisedScore ? originalText : denoisedText;
+}
+
+function transcriptionQualityScore(text: string): number {
+    const trimmed = text.trim();
+    if (!trimmed) return -1;
+
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    const letters = (trimmed.match(/[a-z]/gi) ?? []).length;
+    const vowels = (trimmed.match(/[aeiou]/gi) ?? []).length;
+    const punctuation = (trimmed.match(/[^\w\s']/g) ?? []).length;
+    const longTokens = words.filter((word) => word.length >= 18).length;
+    const noVowelTokens = words.filter((word) => /[a-z]{4,}/i.test(word) && !/[aeiou]/i.test(word)).length;
+    const repeatedChars = (trimmed.match(/(.)\1{3,}/g) ?? []).length;
+
+    const letterRatio = letters / Math.max(trimmed.length, 1);
+    const vowelRatio = vowels / Math.max(letters, 1);
+
+    let score = 0;
+    score += Math.min(words.length, 12) * 0.08;
+    score += letterRatio * 0.9;
+    score += Math.min(vowelRatio / 0.32, 1) * 0.55; // conversational English usually carries reasonable vowels.
+    score -= punctuation * 0.03;
+    score -= longTokens * 0.2;
+    score -= noVowelTokens * 0.2;
+    score -= repeatedChars * 0.3;
+
+    return score;
 }
 
 function normalizeTranscriptionError(error: unknown): TranscriptionError {
