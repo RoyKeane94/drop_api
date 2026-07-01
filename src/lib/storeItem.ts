@@ -89,7 +89,16 @@ export async function storeItem(
                 rawText,
                 hasPartner ? result : normalizeSoloResult(result),
             );
-            return normalized;
+            return {
+                ...normalized,
+                result: {
+                    ...normalized.result,
+                    text: cleanCapturedText(
+                        normalized.result.text,
+                        Boolean(options?.isTypedCapture),
+                    ),
+                },
+            };
         });
     if (clearResults.length == 0) {
         if (!options?.isTypedCapture) {
@@ -97,10 +106,22 @@ export async function storeItem(
         }
         const fallback = fallbackClassifyResult(rawText);
         clearResults = [
-            normalizeCaptureDates(
-                rawText,
-                hasPartner ? fallback : normalizeSoloResult(fallback),
-            ),
+            (() => {
+                const normalized = normalizeCaptureDates(
+                    rawText,
+                    hasPartner ? fallback : normalizeSoloResult(fallback),
+                );
+                return {
+                    ...normalized,
+                    result: {
+                        ...normalized.result,
+                        text: cleanCapturedText(
+                            normalized.result.text,
+                            Boolean(options?.isTypedCapture),
+                        ),
+                    },
+                };
+            })(),
         ];
     }
 
@@ -280,4 +301,31 @@ function normalizeSuggestedTag(suggested: string | null, existingTagNames: strin
     if (!trimmed) return null;
     const exists = existingTagNames.some((name) => name.toLowerCase() == trimmed.toLowerCase());
     return exists ? null : trimmed;
+}
+
+const PURCHASE_LEAD_VERBS = new Set(['buy', 'get', 'grab', 'order', 'pick']);
+
+function cleanCapturedText(text: string, isTypedCapture: boolean): string {
+    const trimmed = text.trim().replace(/\s+/g, ' ');
+    if (!isTypedCapture || !trimmed) return trimmed;
+
+    const tokens = trimmed.split(' ');
+
+    // Remove obvious keyboard mash at the tail, e.g. "buy soup sdf".
+    if (tokens.length >= 3) {
+        const tail = tokens[tokens.length - 1] ?? '';
+        if (/^[a-z]{2,4}$/i.test(tail) && !/[aeiou]/i.test(tail)) {
+            tokens.pop();
+        }
+    }
+
+    // Light normalization for common shopping captures: "buy soups" -> "buy soup".
+    if (tokens.length >= 2 && PURCHASE_LEAD_VERBS.has(tokens[0].toLowerCase())) {
+        const noun = tokens[1] ?? '';
+        if (/^[a-z]{4,}s$/i.test(noun) && !/ss$/i.test(noun)) {
+            tokens[1] = noun.slice(0, -1);
+        }
+    }
+
+    return tokens.join(' ').trim();
 }
