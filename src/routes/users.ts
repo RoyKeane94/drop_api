@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { formatCode } from '../lib/inviteCode';
 import { deleteAccountAndHousehold } from '../lib/householdCleanup';
 import { isValidTimeZone } from '../lib/parseReminderInstant';
+import { fetchRevenueCatDemoStatus } from '../lib/revenueCat';
 
 const router = Router();
 
@@ -153,6 +154,19 @@ router.post('/tags', async (req: any, res) => {
         },
     });
     res.json(tag);
+});
+
+// Demo endpoint to validate RevenueCat secret-key wiring.
+router.get('/billing/revenuecat-demo', async (req: any, res) => {
+    try {
+        const status = await fetchRevenueCatDemoStatus(req.userId);
+        res.json(status);
+    } catch (error) {
+        console.error('RevenueCat demo lookup failed:', error);
+        res.status(502).json({
+            error: 'RevenueCat lookup failed',
+        });
+    }
 });
 
 export default router;

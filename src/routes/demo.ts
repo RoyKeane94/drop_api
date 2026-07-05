@@ -58,6 +58,10 @@ function formatDemoResult(result: ClassifyResult) {
     };
 }
 
+function usableResults(results: ClassifyResult[]): ClassifyResult[] {
+    return results.filter((result) => !result.unclear && result.text.trim().length > 0);
+}
+
 router.post('/capture', async (req, res) => {
     const { text } = req.body as { text?: string };
     if (!text?.trim()) return res.status(400).json({ error: 'text required' });
@@ -65,12 +69,16 @@ router.post('/capture', async (req, res) => {
     try {
         const today = new Date().toISOString().split('T')[0];
         const results = await classify(text, today, [], undefined, starterTagNames, false, true);
-        const usable = results.filter((result) => result.text.trim().length > 0);
-        const result = usable[0] ?? fallbackClassifyResult(text);
-        res.json(formatDemoResult(result));
+        const usable = usableResults(results);
+        const finalResults = usable.length > 0 ? usable : [fallbackClassifyResult(text)];
+        res.json({
+            items: finalResults.map(formatDemoResult),
+        });
     } catch {
         try {
-            res.json(formatDemoResult(fallbackClassifyResult(text)));
+            res.json({
+                items: [formatDemoResult(fallbackClassifyResult(text))],
+            });
         } catch {
             res.status(500).json({ error: 'Classification failed' });
         }
@@ -89,13 +97,14 @@ router.post('/audio', upload.single('audio'), async (req, res) => {
             return res.status(422).json({ error: 'No speech detected' });
         }
         const today = new Date().toISOString().split('T')[0];
-        const [result] = await classify(transcript, today, [], undefined, starterTagNames, false);
-        if (!result || result.unclear) {
+        const results = await classify(transcript, today, [], undefined, starterTagNames, false);
+        const usable = usableResults(results);
+        if (usable.length === 0) {
             return res.status(422).json({ error: "Couldn't quite catch that — try again." });
         }
         res.json({
             rawText: transcript,
-            ...formatDemoResult(result),
+            items: usable.map(formatDemoResult),
         });
     } catch (error: unknown) {
         console.error('Demo audio capture failed:', error);
