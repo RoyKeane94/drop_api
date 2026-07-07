@@ -15,6 +15,10 @@ import { logPushConfiguration } from './lib/pushNotifications';
 
 const app = express();
 
+// Railway (and similar) terminate TLS at the edge; trust one proxy hop so
+// req.ip and rate limiting use X-Forwarded-For instead of the proxy IP.
+app.set('trust proxy', 1);
+
 app.use(cors({ origin: process.env.FRONTEND_URL }));
 app.use(express.json());
 
