@@ -8,6 +8,7 @@ import { requireSubscription } from './middleware/subscription';
 import userRouter from './routes/users';
 import captureRouter from './routes/captures';
 import householdRouter from './routes/household';
+import householdPublicRouter from './routes/householdPublic';
 import listRouter from './routes/list';
 import demoRouter from './routes/demo';
 import revenuecatWebhookRouter from './routes/revenuecatWebhook';
@@ -25,6 +26,7 @@ app.use(express.json());
 const demoLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 app.use('/demo', demoLimiter, demoRouter);
 app.use('/webhooks', revenuecatWebhookRouter);
+app.use('/household', householdPublicRouter);
 
 app.use('/auth', authRouter);
 app.use(authMiddleware);

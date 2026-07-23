@@ -1,58 +1,19 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { formatCode } from '../lib/inviteCode';
 import { deleteAccountAndHousehold } from '../lib/householdCleanup';
 import { isValidTimeZone } from '../lib/parseReminderInstant';
 import { fetchRevenueCatDemoStatus } from '../lib/revenueCat';
+import { buildUserPayload, householdUserInclude } from '../lib/userPayload';
 
 const router = Router();
-
-function userPayload(
-    user: {
-        id: string;
-        householdId: string | null;
-        name: string | null;
-        email: string | null;
-        onboardingDone: boolean;
-        timezone?: string | null;
-        household: {
-            inviteCode: string;
-            subscriptionActive: boolean;
-            users?: Array<{ id: string; name: string | null }>;
-        } | null;
-    },
-    userId: string,
-) {
-    const partner = user.household?.users?.find((member) => member.id !== userId) ?? null;
-
-    return {
-        id: user.id,
-        householdId: user.householdId,
-        name: user.name,
-        email: user.email,
-        onboardingDone: user.onboardingDone,
-        timezone: user.timezone,
-        inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
-        householdSubscriptionActive: user.household?.subscriptionActive ?? false,
-        partnerName: partner?.name ?? null,
-    };
-}
-
-const householdInclude = {
-    select: {
-        inviteCode: true,
-        subscriptionActive: true,
-        users: { select: { id: true, name: true } },
-    },
-} as const;
 
 router.get('/me', async (req: any, res) => {
     const user = await prisma.user.findUnique({
         where: { id: req.userId },
-        include: { household: householdInclude },
+        include: { household: householdUserInclude },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(userPayload(user, req.userId));
+    res.json(buildUserPayload(user, req.userId));
 });
 
 router.put('/me/push-token', async (req: any, res) => {
@@ -63,18 +24,18 @@ router.put('/me/push-token', async (req: any, res) => {
     const user = await prisma.user.update({
         where: { id: req.userId },
         data: { pushToken: trimmed },
-        include: { household: householdInclude },
+        include: { household: householdUserInclude },
     });
-    res.json(userPayload(user, req.userId));
+    res.json(buildUserPayload(user, req.userId));
 });
 
 router.delete('/me/push-token', async (req: any, res) => {
     const user = await prisma.user.update({
         where: { id: req.userId },
         data: { pushToken: null },
-        include: { household: householdInclude },
+        include: { household: householdUserInclude },
     });
-    res.json(userPayload(user, req.userId));
+    res.json(buildUserPayload(user, req.userId));
 });
 
 router.patch('/me', async (req: any, res) => {
@@ -111,9 +72,9 @@ router.patch('/me', async (req: any, res) => {
     const user = await prisma.user.update({
         where: { id: req.userId },
         data,
-        include: { household: householdInclude },
+        include: { household: householdUserInclude },
     });
-    res.json(userPayload(user, req.userId));
+    res.json(buildUserPayload(user, req.userId));
 });
 
 router.delete('/me', async (req: any, res) => {

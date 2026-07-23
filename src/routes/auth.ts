@@ -3,8 +3,9 @@ import { verifyAppleToken } from '../lib/appleAuth';
 import { prisma } from '../lib/prisma';
 import { signSessionToken } from '../lib/session';
 import { seedHouseholdStarterTags } from '../lib/tags';
-import { formatCode, generateInviteCode } from '../lib/inviteCode';
+import { generateInviteCode } from '../lib/inviteCode';
 import { respondWithLoggedError } from '../lib/errorLog';
+import { buildUserPayload, householdUserInclude } from '../lib/userPayload';
 
 const authRouter = Router();
 
@@ -72,22 +73,24 @@ authRouter.post('/apple', async (req, res) => {
         const token = signSessionToken(user.id);
         const userWithHousehold = await prisma.user.findUnique({
             where: { id: user.id },
-            include: { household: { select: { inviteCode: true, subscriptionActive: true } } },
+            include: { household: householdUserInclude },
         });
         return res.status(200).json({
             token,
             sessionToken: token,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                householdId: user.householdId,
-                inviteCode: userWithHousehold?.household
-                    ? formatCode(userWithHousehold.household.inviteCode)
-                    : null,
-                householdSubscriptionActive: userWithHousehold?.household?.subscriptionActive ?? false,
-                onboardingDone: user.onboardingDone,
-            },
+            user: userWithHousehold
+                ? buildUserPayload(userWithHousehold, user.id)
+                : {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    householdId: user.householdId,
+                    inviteCode: null,
+                    hasHouseholdAccess: false,
+                    householdSubscriptionActive: false,
+                    onboardingDone: user.onboardingDone,
+                    partnerName: null,
+                },
         });
     } catch (error) {
         console.error('Apple auth failed:', error);

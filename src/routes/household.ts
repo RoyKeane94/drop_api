@@ -2,45 +2,9 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { formatCode, normaliseCode } from '../lib/inviteCode';
 import { purgeHouseholdData } from '../lib/householdCleanup';
+import { buildUserPayload, householdUserInclude } from '../lib/userPayload';
 
 const router = Router();
-
-function userPayload(
-    user: {
-        id: string;
-        householdId: string | null;
-        name: string | null;
-        email: string | null;
-        onboardingDone: boolean;
-        household: {
-            inviteCode: string;
-            subscriptionActive: boolean;
-            users?: Array<{ id: string; name: string | null }>;
-        } | null;
-    },
-    userId: string,
-) {
-    const partner = user.household?.users?.find((member) => member.id !== userId) ?? null;
-
-    return {
-        id: user.id,
-        householdId: user.householdId,
-        name: user.name,
-        email: user.email,
-        onboardingDone: user.onboardingDone,
-        inviteCode: user.household ? formatCode(user.household.inviteCode) : null,
-        householdSubscriptionActive: user.household?.subscriptionActive ?? false,
-        partnerName: partner?.name ?? null,
-    };
-}
-
-const householdUserInclude = {
-    select: {
-        inviteCode: true,
-        subscriptionActive: true,
-        users: { select: { id: true, name: true } },
-    },
-} as const;
 
 router.get('/code', async (req: any, res) => {
     const user = await prisma.user.findUnique({
@@ -105,7 +69,7 @@ router.post('/join', async (req: any, res) => {
         return res.status(404).json({ error: 'User not found.' });
     }
 
-    res.json({ user: userPayload(updatedUser, req.userId) });
+    res.json({ user: buildUserPayload(updatedUser, req.userId) });
 });
 
 router.post('/subscription/activate', async (req: any, res) => {
