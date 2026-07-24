@@ -11,7 +11,6 @@ import householdRouter from './routes/household';
 import householdPublicRouter from './routes/householdPublic';
 import listRouter from './routes/list';
 import demoRouter from './routes/demo';
-import revenuecatWebhookRouter from './routes/revenuecatWebhook';
 import { logPushConfiguration } from './lib/pushNotifications';
 
 const app = express();
@@ -25,7 +24,6 @@ app.use(express.json());
 
 const demoLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 app.use('/demo', demoLimiter, demoRouter);
-app.use('/webhooks', revenuecatWebhookRouter);
 app.use('/household', householdPublicRouter);
 
 app.use('/auth', authRouter);

@@ -52,22 +52,13 @@ authRouter.post('/apple', async (req, res) => {
             },
         });
 
-        const pendingState = await getPendingRevenueCatState(user.id);
-
         if (!user.householdId) {
-            const household = await createHouseholdWithCode(pendingState ?? false);
+            const household = await createHouseholdWithCode(false);
             await seedHouseholdStarterTags(household.id);
             user = await prisma.user.update({
                 where: { id: user.id },
                 data: { householdId: household.id },
             });
-            await clearPendingRevenueCatState(user.id);
-        } else if (pendingState !== null) {
-            await prisma.household.update({
-                where: { id: user.householdId },
-                data: { subscriptionActive: pendingState },
-            });
-            await clearPendingRevenueCatState(user.id);
         }
 
         const token = signSessionToken(user.id);
@@ -126,26 +117,6 @@ async function createHouseholdWithCode(subscriptionActive = false) {
             if (!isUniqueViolation) throw error;
         }
     }
-}
-
-const pendingRevenueCatCodePrefix = 'revenuecat-pending-subscription:';
-
-async function getPendingRevenueCatState(userId: string): Promise<boolean | null> {
-    const pending = await prisma.clientErrorLog.findUnique({
-        where: { code: pendingRevenueCatCodePrefix + userId },
-        select: { metadata: true },
-    });
-    if (!pending?.metadata || typeof pending.metadata !== 'object' || Array.isArray(pending.metadata)) {
-        return null;
-    }
-    const value = (pending.metadata as { subscriptionActive?: unknown }).subscriptionActive;
-    return typeof value === 'boolean' ? value : null;
-}
-
-async function clearPendingRevenueCatState(userId: string) {
-    await prisma.clientErrorLog.delete({
-        where: { code: pendingRevenueCatCodePrefix + userId },
-    }).catch(() => {});
 }
 
 export default authRouter;
