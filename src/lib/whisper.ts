@@ -2,7 +2,7 @@ import OpenAI, { toFile } from 'openai';
 import { File as NodeFile } from 'node:buffer';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
-import { denoiseAudioFile } from './denoiseAudio.js';
+import { prepareAudioFile } from './denoiseAudio.js';
 
 if (!(globalThis as { File?: unknown }).File) {
     (globalThis as { File?: unknown }).File = NodeFile;
@@ -74,16 +74,16 @@ export async function transcribe(audioPath: string): Promise<string> {
         );
     }
 
-    let denoisedPath: string | null = null;
+    let preparedPathToCleanup: string | null = null;
     try {
-        const { path: preparedPath, denoised } = await denoiseAudioFile(audioPath);
-        if (denoised && preparedPath !== audioPath) {
-            denoisedPath = preparedPath;
+        const prepared = await prepareAudioFile(audioPath);
+        if (prepared.prepared && prepared.path !== audioPath) {
+            preparedPathToCleanup = prepared.path;
         }
 
-        const transcript = denoised
-            ? await bestTranscriptFromBoth(preparedPath, audioPath)
-            : await whisperTranscribe(preparedPath);
+        const transcript = prepared.compareWithOriginal
+            ? await bestTranscriptFromBoth(prepared.path, audioPath)
+            : await whisperTranscribe(prepared.path);
 
         if (!transcript) {
             throw new TranscriptionError('NO_SPEECH', 422, "Couldn't hear anything — try again.");
@@ -93,8 +93,8 @@ export async function transcribe(audioPath: string): Promise<string> {
     } catch (error: unknown) {
         throw normalizeTranscriptionError(error);
     } finally {
-        if (denoisedPath) {
-            await fsPromises.unlink(denoisedPath).catch(() => {});
+        if (preparedPathToCleanup) {
+            await fsPromises.unlink(preparedPathToCleanup).catch(() => {});
         }
     }
 }
