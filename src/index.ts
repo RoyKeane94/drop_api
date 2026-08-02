@@ -12,6 +12,7 @@ import householdPublicRouter from './routes/householdPublic';
 import listRouter from './routes/list';
 import demoRouter from './routes/demo';
 import { logPushConfiguration } from './lib/pushNotifications';
+import { startMemoryIdleRestart, trackRequestActivity } from './lib/memoryIdleRestart';
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.set('trust proxy', 1);
 
 app.use(cors({ origin: process.env.FRONTEND_URL }));
 app.use(express.json());
+app.use(trackRequestActivity);
 
 const demoLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 app.use('/demo', demoLimiter, demoRouter);
@@ -35,4 +37,5 @@ app.use('/list', requireSubscription, listRouter);
 
 const PORT = process.env.PORT || 3001;
 logPushConfiguration();
+startMemoryIdleRestart();
 app.listen(PORT, () => console.log(`Drop API running on port ${PORT}`));
