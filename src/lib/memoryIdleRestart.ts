@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { finished } from 'node:stream';
 
 /**
  * When Node RSS stays high after heavy work (ffmpeg / Whisper / screenshots),
@@ -13,6 +14,7 @@ import type { Request, Response, NextFunction } from 'express';
 let inFlight = 0;
 let lastActivityAt = Date.now();
 let checkTimer: ReturnType<typeof setInterval> | null = null;
+let lastSkipLogAt = 0;
 
 function envPositiveInt(name: string, fallback: number): number {
     const raw = process.env[name]?.trim();
@@ -28,19 +30,34 @@ function thresholdMb(): number {
     return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** Probes/load balancers must not reset the idle clock or the watchdog never fires. */
+function isProbeRequest(req: Request): boolean {
+    if (req.method === 'HEAD') return true;
+    const path = req.path || '';
+    return (
+        path === '/'
+        || path === '/health'
+        || path === '/healthz'
+        || path === '/ready'
+        || path === '/readyz'
+        || path === '/ping'
+    );
+}
+
 export function trackRequestActivity(req: Request, res: Response, next: NextFunction): void {
+    if (isProbeRequest(req)) {
+        next();
+        return;
+    }
+
     inFlight += 1;
     lastActivityAt = Date.now();
 
-    const done = () => {
-        res.off('finish', done);
-        res.off('close', done);
+    finished(res, () => {
         inFlight = Math.max(0, inFlight - 1);
         lastActivityAt = Date.now();
-    };
+    });
 
-    res.on('finish', done);
-    res.on('close', done);
     next();
 }
 
@@ -59,13 +76,24 @@ export function startMemoryIdleRestart(): void {
     );
 
     checkTimer = setInterval(() => {
-        if (inFlight > 0) return;
-
-        const idleFor = Date.now() - lastActivityAt;
-        if (idleFor < idleMs) return;
-
         const rssMb = process.memoryUsage().rss / (1024 * 1024);
+        const idleFor = Date.now() - lastActivityAt;
+
         if (rssMb < threshold) return;
+
+        if (inFlight > 0 || idleFor < idleMs) {
+            // Once a minute while stuck high, explain why we have not exited yet.
+            const now = Date.now();
+            if (now - lastSkipLogAt >= 60_000) {
+                lastSkipLogAt = now;
+                console.log(
+                    `Memory idle restart waiting: RSS ${rssMb.toFixed(0)}MB (threshold ${threshold}MB), `
+                        + `inFlight=${inFlight}, idle=${Math.round(idleFor / 1000)}s `
+                        + `(need ${Math.round(idleMs / 1000)}s).`,
+                );
+            }
+            return;
+        }
 
         console.warn(
             `Idle memory restart: RSS ${rssMb.toFixed(0)}MB >= ${threshold}MB after ${Math.round(idleFor / 1000)}s idle — exiting for Railway restart.`,
