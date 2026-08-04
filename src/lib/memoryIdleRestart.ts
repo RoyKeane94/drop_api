@@ -9,10 +9,14 @@ import { finished } from 'node:stream';
  * Enable with MEMORY_IDLE_RESTART_MB (e.g. 180). Disabled when unset or 0.
  *
  * Uses exit code 1 so Railway restartPolicyType=on_failure brings the service back.
+ *
+ * Idle is measured from the last *heavy* request (captures / demo audio).
+ * Lightweight polling (e.g. GET /list every 10s) must not reset the idle clock
+ * or the watchdog never fires while the app is open.
  */
 
 let inFlight = 0;
-let lastActivityAt = Date.now();
+let lastHeavyActivityAt = Date.now();
 let checkTimer: ReturnType<typeof setInterval> | null = null;
 let lastSkipLogAt = 0;
 
@@ -30,7 +34,7 @@ function thresholdMb(): number {
     return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** Probes/load balancers must not reset the idle clock or the watchdog never fires. */
+/** Probes/load balancers must not affect in-flight or idle tracking. */
 function isProbeRequest(req: Request): boolean {
     if (req.method === 'HEAD') return true;
     const path = req.path || '';
@@ -44,18 +48,32 @@ function isProbeRequest(req: Request): boolean {
     );
 }
 
+/**
+ * Work that actually grows RSS (Whisper / ffmpeg / vision).
+ * List polling, profile fetches, etc. are intentionally excluded.
+ */
+function isHeavyRequest(req: Request): boolean {
+    const path = req.path || '';
+    return path.startsWith('/captures') || path.startsWith('/demo');
+}
+
 export function trackRequestActivity(req: Request, res: Response, next: NextFunction): void {
     if (isProbeRequest(req)) {
         next();
         return;
     }
 
+    const heavy = isHeavyRequest(req);
     inFlight += 1;
-    lastActivityAt = Date.now();
+    if (heavy) {
+        lastHeavyActivityAt = Date.now();
+    }
 
     finished(res, () => {
         inFlight = Math.max(0, inFlight - 1);
-        lastActivityAt = Date.now();
+        if (heavy) {
+            lastHeavyActivityAt = Date.now();
+        }
     });
 
     next();
@@ -72,12 +90,12 @@ export function startMemoryIdleRestart(): void {
     const intervalMs = envPositiveInt('MEMORY_CHECK_INTERVAL_MS', 60_000);
 
     console.log(
-        `Memory idle restart enabled: exit when RSS > ${threshold}MB and idle for ${Math.round(idleMs / 1000)}s (check every ${Math.round(intervalMs / 1000)}s).`,
+        `Memory idle restart enabled: exit when RSS > ${threshold}MB and no heavy work for ${Math.round(idleMs / 1000)}s (check every ${Math.round(intervalMs / 1000)}s).`,
     );
 
     checkTimer = setInterval(() => {
         const rssMb = process.memoryUsage().rss / (1024 * 1024);
-        const idleFor = Date.now() - lastActivityAt;
+        const idleFor = Date.now() - lastHeavyActivityAt;
 
         if (rssMb < threshold) return;
 
@@ -88,7 +106,7 @@ export function startMemoryIdleRestart(): void {
                 lastSkipLogAt = now;
                 console.log(
                     `Memory idle restart waiting: RSS ${rssMb.toFixed(0)}MB (threshold ${threshold}MB), `
-                        + `inFlight=${inFlight}, idle=${Math.round(idleFor / 1000)}s `
+                        + `inFlight=${inFlight}, heavyIdle=${Math.round(idleFor / 1000)}s `
                         + `(need ${Math.round(idleMs / 1000)}s).`,
                 );
             }
@@ -96,7 +114,7 @@ export function startMemoryIdleRestart(): void {
         }
 
         console.warn(
-            `Idle memory restart: RSS ${rssMb.toFixed(0)}MB >= ${threshold}MB after ${Math.round(idleFor / 1000)}s idle — exiting for Railway restart.`,
+            `Idle memory restart: RSS ${rssMb.toFixed(0)}MB >= ${threshold}MB after ${Math.round(idleFor / 1000)}s without heavy work — exiting for Railway restart.`,
         );
 
         if (checkTimer) clearInterval(checkTimer);
