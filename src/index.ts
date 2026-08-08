@@ -38,4 +38,9 @@ app.use('/list', requireSubscription, listRouter);
 const PORT = process.env.PORT || 3001;
 logPushConfiguration();
 startMemoryIdleRestart();
+if (process.env.TRANSCRIBE_IN_PROCESS?.trim().toLowerCase() === 'true') {
+    console.log('Audio transcription running in-process (TRANSCRIBE_IN_PROCESS=true).');
+} else {
+    console.log('Audio transcription isolated in one-shot worker process.');
+}
 app.listen(PORT, () => console.log(`Drop API running on port ${PORT}`));

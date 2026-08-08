@@ -3,6 +3,7 @@ import { File as NodeFile } from 'node:buffer';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { prepareAudioFile } from './denoiseAudio.js';
+import { runAudioTranscribeWorker } from './runAudioTranscribeWorker.js';
 
 if (!(globalThis as { File?: unknown }).File) {
     (globalThis as { File?: unknown }).File = NodeFile;
@@ -29,7 +30,10 @@ export function isTranscriptionError(error: unknown): error is TranscriptionErro
 }
 
 const MIN_AUDIO_BYTES = 1500;
-const MIN_TRANSCRIPT_CHARS = 2;
+
+function envFlagTrue(name: string): boolean {
+    return process.env[name]?.trim().toLowerCase() === 'true';
+}
 
 async function whisperTranscribe(filePath: string): Promise<string> {
     try {
@@ -60,7 +64,11 @@ async function whisperTranscribe(filePath: string): Promise<string> {
     }
 }
 
-export async function transcribe(audioPath: string): Promise<string> {
+/**
+ * Heavy path: ffmpeg/Python prep + Whisper. Used inside the one-shot worker
+ * (and when TRANSCRIBE_IN_PROCESS=true for debugging).
+ */
+export async function transcribeInProcess(audioPath: string): Promise<string> {
     const stat = await fsPromises.stat(audioPath).catch(() => null);
     if (!stat || stat.size == 0) {
         throw new TranscriptionError('NO_AUDIO', 400, 'Audio file required.');
@@ -96,6 +104,31 @@ export async function transcribe(audioPath: string): Promise<string> {
         if (preparedPathToCleanup) {
             await fsPromises.unlink(preparedPathToCleanup).catch(() => {});
         }
+    }
+}
+
+/**
+ * Transcribe capture audio. By default runs in a short-lived child so sticky
+ * RSS from ffmpeg/Whisper does not inflate the API process.
+ * Set TRANSCRIBE_IN_PROCESS=true to skip the worker (local debugging only).
+ */
+export async function transcribe(audioPath: string): Promise<string> {
+    if (envFlagTrue('TRANSCRIBE_IN_PROCESS')) {
+        return transcribeInProcess(audioPath);
+    }
+
+    try {
+        const result = await runAudioTranscribeWorker(audioPath);
+        if (result.ok) {
+            return result.transcript;
+        }
+        throw new TranscriptionError(
+            result.error.code,
+            result.error.status,
+            result.error.userMessage,
+        );
+    } catch (error: unknown) {
+        throw normalizeTranscriptionError(error);
     }
 }
 
@@ -186,6 +219,7 @@ function normalizeTranscriptionError(error: unknown): TranscriptionError {
         || message.includes('network')
         || message.includes('fetch')
         || message.includes('socket')
+        || message.includes('audio worker')
     ) {
         return new TranscriptionError('NETWORK', 503, "Can't reach speech service right now — try again.");
     }
