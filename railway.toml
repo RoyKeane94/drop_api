@@ -3,4 +3,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+# Memory idle-restart exits with code 1 on purpose; keep retries high so
+# recycling sticky RSS does not exhaust the default 10-restart cap.
 restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 100
